@@ -93,20 +93,27 @@
   },
   {
     "record_id": "legacy:data/travel-diary/2024/2024-07-08-yuxi.md",
-    "date": "2024-07-08",
+    "date": "2024-07-06",
     "country": "中国",
     "country_code": "CN",
     "admin_area": "云南省",
     "admin_area_type": "省",
     "locality": "玉溪市",
     "locality_type": "城市",
-    "desc_md": "data/travel-diary/2024/2024-07-08-yuxi.md",
+    "desc_md": "data/travel-diary/2024/2024-07-06-yuxi.md",
     "photo_folder": "data/photos/yuxi",
     "photos": [
-      "img_20240708_122737-2.jpg"
+      "img_20240708_122737-2.jpg",
+      "weixintupian_20261118215038_14559_27.jpg"
+    ],
+    "video_folder": "data/videos/yuxi",
+    "videos": [
+      "accf33a8cb1047affef32b9192402c56.mp4"
     ],
     "media_order": [
-      "photo:img_20240708_122737-2.jpg"
+      "photo:img_20240708_122737-2.jpg",
+      "photo:weixintupian_20261118215038_14559_27.jpg",
+      "video:accf33a8cb1047affef32b9192402c56.mp4"
     ]
   },
   {
@@ -312,7 +319,9 @@
       "img_20241005_225648.jpg",
       "IMG_20241006_101914.jpg",
       "IMG_20241006_101917.jpg",
-      "IMG_20241006_101935.jpg"
+      "IMG_20241006_101935.jpg",
+      "weixintupian_20261118221610_14610_27.jpg",
+      "weixintupian_20261118221613_14611_27.jpg"
     ],
     "media_order": [
       "photo:img_20241004_141039.jpg",
@@ -323,7 +332,9 @@
       "photo:img_20241005_225648.jpg",
       "photo:IMG_20241006_101914.jpg",
       "photo:IMG_20241006_101917.jpg",
-      "photo:IMG_20241006_101935.jpg"
+      "photo:IMG_20241006_101935.jpg",
+      "photo:weixintupian_20261118221610_14610_27.jpg",
+      "photo:weixintupian_20261118221613_14611_27.jpg"
     ]
   },
   {
@@ -1345,13 +1356,28 @@
     "trip_id": "2025-08-central-yunnan",
     "desc_md": "data/travel-diary/2025/2025-08-27-yuxi.md",
     "photo_folder": "data/photos/yuxi",
-    "photos": [],
+    "photos": [
+      "weixintupian_20261118232509_6325_24.jpg",
+      "weixintupian_20261118232506_6321_24.jpg",
+      "weixintupian_20261118232507_6322_24.jpg",
+      "weixintupian_20261118232510_6326_24.jpg",
+      "weixintupian_20261118232725_6345_24.jpg",
+      "weixintupian_20261118232727_6346_24.jpg",
+      "weixintupian_20261118232729_6347_24.jpg"
+    ],
     "video_folder": "data/videos/yuxi",
     "videos": [
       "hnvideoeditor_2025_08_28_113632169.mp4"
     ],
     "media_order": [
-      "video:hnvideoeditor_2025_08_28_113632169.mp4"
+      "video:hnvideoeditor_2025_08_28_113632169.mp4",
+      "photo:weixintupian_20261118232509_6325_24.jpg",
+      "photo:weixintupian_20261118232506_6321_24.jpg",
+      "photo:weixintupian_20261118232507_6322_24.jpg",
+      "photo:weixintupian_20261118232510_6326_24.jpg",
+      "photo:weixintupian_20261118232725_6345_24.jpg",
+      "photo:weixintupian_20261118232727_6346_24.jpg",
+      "photo:weixintupian_20261118232729_6347_24.jpg"
     ]
   },
   {
@@ -1372,11 +1398,25 @@
       "img_20250829_160549.jpg",
       "img_20250829_170213_1_edit_13113723772756.jpg",
       "img_20250829_171428.jpg",
-      "img_20250829_171542.jpg"
+      "img_20250829_171542.jpg",
+      "weixintupian_20261118232722_6343_24.jpg",
+      "weixintupian_20261118232719_6340_24.jpg",
+      "weixintupian_20261118232721_6341_24.jpg",
+      "weixintupian_20261118232511_6327_24.jpg",
+      "weixintupian_20261118232511_6328_24.jpg",
+      "weixintupian_20261118232512_6329_24.jpg",
+      "weixintupian_20261118232513_6330_24.jpg",
+      "weixintupian_20261118232514_6331_24.jpg",
+      "weixintupian_20261118232514_6332_24.jpg",
+      "weixintupian_20261118232714_6336_24.jpg",
+      "weixintupian_20261118232715_6337_24.jpg",
+      "weixintupian_20261118232717_6339_24.jpg",
+      "weixintupian_20261118232723_6344_24.jpg"
     ],
     "video_folder": "data/videos/jianshui",
     "videos": [
-      "vid_20250829_171711.mp4"
+      "vid_20250829_171711.mp4",
+      "weixinshipin2026-11-18_233203_498.mp4"
     ],
     "media_order": [
       "photo:img_20250829_153407.jpg",
@@ -1385,7 +1425,21 @@
       "photo:img_20250829_170213_1_edit_13113723772756.jpg",
       "photo:img_20250829_171428.jpg",
       "photo:img_20250829_171542.jpg",
-      "video:vid_20250829_171711.mp4"
+      "video:vid_20250829_171711.mp4",
+      "video:weixinshipin2026-11-18_233203_498.mp4",
+      "photo:weixintupian_20261118232722_6343_24.jpg",
+      "photo:weixintupian_20261118232719_6340_24.jpg",
+      "photo:weixintupian_20261118232721_6341_24.jpg",
+      "photo:weixintupian_20261118232511_6327_24.jpg",
+      "photo:weixintupian_20261118232511_6328_24.jpg",
+      "photo:weixintupian_20261118232512_6329_24.jpg",
+      "photo:weixintupian_20261118232513_6330_24.jpg",
+      "photo:weixintupian_20261118232514_6331_24.jpg",
+      "photo:weixintupian_20261118232514_6332_24.jpg",
+      "photo:weixintupian_20261118232714_6336_24.jpg",
+      "photo:weixintupian_20261118232715_6337_24.jpg",
+      "photo:weixintupian_20261118232717_6339_24.jpg",
+      "photo:weixintupian_20261118232723_6344_24.jpg"
     ]
   },
   {
