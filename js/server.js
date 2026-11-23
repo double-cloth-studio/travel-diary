@@ -46,6 +46,8 @@ function parseArgs(argv) {
       args.local = true;
     } else if (current === '--network') {
       args.local = false;
+    } else if (current === '--no-request-log' || current === '--request-log') {
+      args.requestLog = current === '--request-log';
     } else if (current === '--write-mode' && index + 1 < argv.length) {
       args.writeMode = argv[index + 1];
       index += 1;
@@ -94,7 +96,7 @@ function printHelpAndExit() {
 Travel Diary server
 
 Usage:
-  node js/server.js [--dir PATH] [--port PORT] [--local|--network] [--write-mode=MODE] [--allowed-origin=ORIGIN]
+  node js/server.js [--dir PATH] [--port PORT] [--local|--network] [--no-request-log] [--write-mode=MODE] [--allowed-origin=ORIGIN]
 
 Options:
   ${CONFIG_FILENAME}  从服务目录读取默认配置
@@ -103,6 +105,7 @@ Options:
   --port PORT   Starting port (default: ${CONFIG.defaultPort})
   --local       Bind to 127.0.0.1 only (default)
   --network     Bind to 0.0.0.0 for LAN access
+  --no-request-log  关闭 GET 和 POST 请求日志（默认开启，--request-log 可显式开启）
   --write-mode  Write policy: local (default) or remote
   --allowed-origin  Exact HTTPS Origin allowed in remote mode (repeatable)
   --help, -h    Show this help
@@ -557,6 +560,11 @@ async function listenWithRetries(rootDir, port, bindAll, options = {}) {
       const lifecycle = { stopping: false, pending: new Set() };
       const handler = createHandler(rootDir, { ...options, lifecycle });
       const server = http.createServer((req, res) => {
+        if (options.requestLog && (req.method === 'GET' || req.method === 'POST')) {
+          const target = req.url.split('?', 1)[0];
+          const pathname = target.startsWith('/') ? target : URL.parse(target)?.pathname || '/';
+          res.once('finish', () => console.log(`[HTTP] ${req.method} ${pathname} ${res.statusCode}`));
+        }
         if (lifecycle.stopping) {
           res.writeHead(503, { Connection: 'close', 'Cache-Control': 'no-store' });
           res.end('unavailable\n');
@@ -624,7 +632,8 @@ async function main() {
 
   const { server, port, structure } = await listenWithRetries(rootDir, args.port, !args.local, {
     writeMode: args.writeMode,
-    allowedOrigins: args.allowedOrigins
+    allowedOrigins: args.allowedOrigins,
+    requestLog: args.requestLog ?? true
   });
   const localhostUrl = `http://localhost:${port}`;
   const networkUrl = args.local ? 'disabled (local only)' : `http://${getLocalIp()}:${port}`;
@@ -636,6 +645,7 @@ async function main() {
   console.log(`配置文件：${configFiles.length ? configFiles.map(name => path.join(rootDir, name)).join(' → ') : '内置默认值'}`);
   console.log(`Bind: ${args.local ? '127.0.0.1 (--local)' : '0.0.0.0 (--network)'}`);
   console.log(`Write mode: ${args.writeMode}`);
+  console.log(`请求日志：${args.requestLog === false ? '关闭' : '开启（GET / POST）'}`);
   if (args.writeMode === 'remote') console.log(`Allowed origins: ${args.allowedOrigins.join(', ')}`);
   console.log('Authentication: .secrets/auth.json (scrypt + server session)');
   if (!structure.authConfigured) {

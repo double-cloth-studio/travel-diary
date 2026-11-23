@@ -1839,7 +1839,8 @@ function renderDetailPageTurns(navigation, kind) {
             ? `data-action="entry-${direction}" data-entry-id="${escapeHtml(target.id)}"`
             : kind === 'trip' ? `data-action="open-trip" data-trip-key="${escapeHtml(target.key)}"`
             : `data-action="place-${direction}" data-country-key="${escapeHtml(target.countryKey)}" data-admin-area="${escapeHtml(target.adminArea || '')}" data-locality="${escapeHtml(target.locality || '')}"`;
-        return `<button class="detail-page-turn detail-page-turn-${direction}" type="button" ${attributes}
+        const shortcut = kind === 'entry' && target ? ` aria-keyshortcuts="${direction === 'prev' ? 'ArrowLeft' : 'ArrowRight'}"` : '';
+        return `<button class="detail-page-turn detail-page-turn-${direction}" type="button" ${attributes}${shortcut}
             aria-label="${escapeHtml(description)}" title="${escapeHtml(description)}">
             <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path d="M2 12 12 2v6c14 2 20 12 18 22C27 21 20 16 12 16v6Z"/></svg>
         </button>`;
@@ -2024,6 +2025,7 @@ function renderEntryPhotosRoute(params = {}) {
         return;
     }
 
+    const media = getRecordMedia(record);
     setPages(`
         <div class="place-page">
             <div class="entry-photos-summary">
@@ -2031,15 +2033,15 @@ function renderEntryPhotosRoute(params = {}) {
                 <p class="journal-label">媒体附件</p>
                 <h1>${escapeHtml(record.title)}</h1>
                 <p class="place-count">${escapeHtml(getLocationText(record))} · ${record.photos?.length || 0} 张图片 · ${record.videos?.length || 0} 个视频</p>
+                ${renderMediaFilters(media.length)}
                 ${renderMediaOverview([record])}
             </div>
         </div>
     `, `
-        <div class="place-records entry-photos-page">
-            <p class="journal-label">全部图片与视频</p>
-            ${renderPhotoSleeve(record)}
+        <div class="place-records entry-photos-page" id="mediaResults">
+            ${renderMediaResults(media)}
         </div>
-    `, 'dossier-page place-detail-page');
+    `, 'dossier-page place-detail-page', { mediaGallery: { media } });
 }
 
 function renderGroupedPhotosRoute(params = {}) {
@@ -2049,6 +2051,7 @@ function renderGroupedPhotosRoute(params = {}) {
     })));
     const label = params.trip ? (matching.length ? `行程 ${matching[0].tripGroupLabel}` : '没有找到这次行程') : getPlaceLabel(params, matching);
     const photoCount = media.filter(item => item.kind === 'image').length;
+    const emptyMessage = `${params.trip ? '这次行程' : '这个地点'}还没有图片或视频附件。`;
 
     setPages(`
         <div class="place-page">
@@ -2057,15 +2060,67 @@ function renderGroupedPhotosRoute(params = {}) {
                 <p class="journal-label">媒体附件</p>
                 <h1>${escapeHtml(label)}</h1>
                 <p class="place-count">${photoCount} 张图片 · ${media.length - photoCount} 个视频</p>
+                ${renderMediaFilters(media.length)}
                 ${renderMediaOverview(matching)}
             </div>
         </div>
     `, `
-        <div class="place-records entry-photos-page">
-            <p class="journal-label">全部图片与视频</p>
-            ${media.length ? renderPhotoSleeve(matching[0], { media, groupByRecord: true }) : `<p class="photo-note">${params.trip ? '这次行程' : '这个地点'}还没有图片或视频附件。</p>`}
+        <div class="place-records entry-photos-page" id="mediaResults">
+            ${renderMediaResults(media, { groupByRecord: true, emptyMessage })}
         </div>
-    `, 'dossier-page place-detail-page');
+    `, 'dossier-page place-detail-page', { mediaGallery: { media, groupByRecord: true } });
+}
+
+function renderMediaFilters(total) {
+    if (!total) return '';
+    return `<form class="media-filters" role="search" aria-label="搜索与筛选附件" data-media-filters>
+        <div>
+            <label class="field-label" for="mediaSearch">搜索附件</label>
+            <div class="ink-field search-field"><input type="search" id="mediaSearch" name="query" placeholder="文件名或日记标题" autocomplete="off" aria-controls="mediaResults"></div>
+        </div>
+        <div>
+            <label class="field-label" for="mediaType">媒体类型</label>
+            <select id="mediaType" name="kind" aria-controls="mediaResults">
+                <option value="">全部</option><option value="image">图片</option><option value="video">视频</option>
+            </select>
+        </div>
+        <p class="place-count" role="status" data-media-result-count>显示全部 ${total} 项附件</p>
+    </form>`;
+}
+
+function renderMediaResults(media, { groupByRecord = false, emptyMessage = '这篇记录没有图片或视频附件。', filtered = false } = {}) {
+    return `<p class="journal-label">${filtered ? '筛选结果' : '全部图片与视频'}</p>
+        ${media.length ? renderPhotoSleeve(null, { media, groupByRecord }) : `<p class="photo-note">${escapeHtml(emptyMessage)}</p>`}`;
+}
+
+function bindMediaFilters({ media, groupByRecord }) {
+    const form = refs.leftPage.querySelector('[data-media-filters]');
+    if (!form) return;
+    const results = refs.rightPage.querySelector('#mediaResults');
+    const count = form.querySelector('[data-media-result-count]');
+    const input = form.elements.query;
+    const select = form.elements.kind;
+    let previousQuery = '';
+    let previousKind = '';
+    function update() {
+        const query = input.value.trim().toLowerCase();
+        const kind = select.value;
+        if (query === previousQuery && kind === previousKind) return;
+        previousQuery = query;
+        previousKind = kind;
+        const filtered = Boolean(query || kind);
+        const matches = media.filter(item => (!kind || item.kind === kind)
+            && (!query || item.alt.toLowerCase().includes(query)));
+        disposeMountedPhotoSleeves(results);
+        results.innerHTML = renderMediaResults(matches, { groupByRecord, filtered, emptyMessage: '没有符合条件的附件。' });
+        refs.rightPage.scrollTop = 0;
+        mountPhotoSleeves();
+        count.textContent = filtered ? `找到 ${matches.length} 项附件，共 ${media.length} 项` : `显示全部 ${media.length} 项附件`;
+    }
+    form.addEventListener('submit', event => event.preventDefault());
+    input.addEventListener('input', event => { if (!event.isComposing) update(); });
+    input.addEventListener('compositionend', update);
+    select.addEventListener('change', update);
 }
 
 function renderMediaOverview(records) {
@@ -2284,9 +2339,9 @@ function renderPhotoViewer() {
             <section class="photo-viewer-panel${isVideo ? ' has-video' : ''}" ${photoViewerDialog ? '' : 'role="dialog" aria-modal="true" aria-label="媒体查看器"'} tabindex="-1">
                 <div class="photo-viewer-toolbar">
                     <div class="photo-viewer-nav-group photo-viewer-control-group" aria-label="媒体切换">
-                        <button class="photo-viewer-control" type="button" data-action="photo-prev" data-photo-action="prev" aria-label="上一项媒体"${navigationDisabled}>${renderPhotoViewerControlIcon('previous')}</button>
-                        <span class="photo-viewer-count">${escapeHtml(position)}</span>
-                        <button class="photo-viewer-control" type="button" data-action="photo-next" data-photo-action="next" aria-label="下一项媒体"${navigationDisabled}>${renderPhotoViewerControlIcon('next')}</button>
+                        <button class="photo-viewer-control" type="button" data-action="photo-prev" data-photo-action="prev" aria-label="上一项媒体" aria-keyshortcuts="ArrowLeft"${navigationDisabled}>${renderPhotoViewerControlIcon('previous')}</button>
+                        <span class="photo-viewer-count" aria-live="polite">${escapeHtml(position)}</span>
+                        <button class="photo-viewer-control" type="button" data-action="photo-next" data-photo-action="next" aria-label="下一项媒体" aria-keyshortcuts="ArrowRight"${navigationDisabled}>${renderPhotoViewerControlIcon('next')}</button>
                     </div>
                 </div>
                 <button class="photo-viewer-control photo-viewer-close" type="button" data-action="close-photo-viewer" aria-label="关闭媒体查看器">${renderPhotoViewerControlIcon('close')}</button>
@@ -2327,6 +2382,8 @@ function renderPhotoViewer() {
     }
 
     enhanceCustomSelects(root.querySelector('[data-photo-viewer]'));
+    const panel = root.querySelector('.photo-viewer-panel');
+    if (!panel.contains(document.activeElement)) panel.focus({ preventScroll: true });
     syncViewerFullscreenButton();
     void updatePhotoViewerFileSize(photo, root.querySelector('[data-photo-viewer-size]'));
     observePhotoViewerStage();
@@ -2366,7 +2423,6 @@ function renderPhotoViewer() {
             else updatePhotoViewerTransform();
             syncVideoViewerControls();
         }
-        requestAnimationFrame(() => getPhotoViewerRoot()?.querySelector('.photo-viewer-panel')?.focus({ preventScroll: true }));
         return;
     }
 
@@ -2392,9 +2448,6 @@ function renderPhotoViewer() {
         image.addEventListener('load', () => { void revealPhotoViewerImage(image); }, { once: true });
         void loadOriginalImage(image, photo.src);
     }
-    requestAnimationFrame(() => {
-        getPhotoViewerRoot()?.querySelector('.photo-viewer-panel')?.focus({ preventScroll: true });
-    });
 }
 
 async function revealPhotoViewerImage(image) {
@@ -2661,7 +2714,8 @@ function handlePhotoViewerAction(action) {
             zoomPhoto(0.86);
             break;
         case 'reset':
-            resetPhotoTransform();
+            resetPhotoTransform({ render: false });
+            fitPhotoToStage();
             break;
         case 'rotate-left':
             rotatePhoto(-90);
@@ -3038,6 +3092,7 @@ function getInitialPhotoScale(stage, media) {
         naturalWidth: width,
         naturalHeight: height,
         allowUpscale: media.matches('[data-video-viewer-video]')
+            || Boolean(document.fullscreenElement?.contains(stage))
     });
 }
 
@@ -4547,6 +4602,11 @@ function getEntryBackgroundHash() {
 }
 
 function handleDocumentKeydown(event) {
+    if (event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
+    const horizontalArrow = event.key === 'ArrowLeft' || event.key === 'ArrowRight';
+    const previous = event.key === 'ArrowLeft';
+    if (horizontalArrow && (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey
+        || event.target?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="listbox"], [role="slider"]'))) return;
     // 仅当前查看器接收快捷键，其他原生对话框仍独占键盘操作。
     if (document.querySelector('dialog[open]') && !event.target?.closest?.('[data-photo-viewer]')) return;
     if (isPhotoViewerOpen()) {
@@ -4561,6 +4621,12 @@ function handleDocumentKeydown(event) {
         }
 
         const video = getViewerVideo();
+        if (horizontalArrow && photoViewerState.photos.length > 1
+            && !event.target?.closest?.('.video-viewer-controls, [data-video-viewer-video]')) {
+            event.preventDefault();
+            showPhotoAt(photoViewerState.index + (previous ? -1 : 1));
+            return;
+        }
         if (video) {
             if (event.target.matches('input, select, button') && !['k', 'K', 'm', 'M', 'f', 'F'].includes(event.key)) return;
             if (event.key === ' ' || event.key === 'k' || event.key === 'K') {
@@ -4568,9 +4634,9 @@ function handleDocumentKeydown(event) {
                 handleVideoViewerAction('toggle-play');
                 return;
             }
-            if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+            if (horizontalArrow) {
                 event.preventDefault();
-                const delta = event.key === 'ArrowLeft' ? -5 : 5;
+                const delta = previous ? -5 : 5;
                 video.currentTime = clamp(video.currentTime + delta, 0, Number.isFinite(video.duration) ? video.duration : video.currentTime + Math.max(delta, 0));
                 syncVideoViewerControls();
                 return;
@@ -4600,18 +4666,6 @@ function handleDocumentKeydown(event) {
             return;
         }
 
-        if (event.key === 'ArrowLeft') {
-            event.preventDefault();
-            showPhotoAt((photoViewerState.index || 0) - 1);
-            return;
-        }
-
-        if (event.key === 'ArrowRight') {
-            event.preventDefault();
-            showPhotoAt((photoViewerState.index || 0) + 1);
-            return;
-        }
-
         if (event.key === '+' || event.key === '=') {
             event.preventDefault();
             zoomPhoto(1.16);
@@ -4626,9 +4680,10 @@ function handleDocumentKeydown(event) {
 
         if (event.key === '0') {
             event.preventDefault();
-            resetPhotoTransform();
+            handlePhotoViewerAction('reset');
             return;
         }
+        return;
     }
 
     if (isMobileContextPanelOpen && !document.querySelector('dialog[open]')
@@ -4637,6 +4692,16 @@ function handleDocumentKeydown(event) {
     if (event.key === 'Escape' && isMobileContextPanelOpen) {
         event.preventDefault();
         closeMobileContextPanel();
+        return;
+    }
+
+    if (horizontalArrow && !isMobileContextPanelOpen && activeRoute?.name === 'entry') {
+        const direction = previous ? 'prev' : 'next';
+        const button = refs.pageTurns?.querySelector(`[data-action="entry-${direction}"]:not(:disabled)`);
+        if (button) {
+            event.preventDefault();
+            button.click();
+        }
         return;
     }
 
@@ -5016,9 +5081,7 @@ function setPages(leftHtml, rightHtml, rightPageMode = '', options = {}) {
     const rightScrollTop = options.preserveRightScroll ? refs.rightPage.scrollTop : 0;
     const keepContextPanelOpen = Boolean(options.keepContextPanelOpen && isMobileContextPanelOpen);
 
-    disposePhotoSleeves.forEach(dispose => dispose());
-    disposePhotoSleeves = [];
-    document.querySelectorAll('#leftPage .photo-sleeve img, #rightPage .photo-sleeve img').forEach(releasePhotoSleeveMedia);
+    disposeMountedPhotoSleeves(refs.leftPage, refs.rightPage);
     refs.leftPage.innerHTML = leftHtml;
     refs.rightPage.className = ['paper-page', 'paper-page-right', rightPageMode].filter(Boolean).join(' ');
     refs.rightPage.innerHTML = rightHtml;
@@ -5038,6 +5101,24 @@ function setPages(leftHtml, rightHtml, rightPageMode = '', options = {}) {
         refs.rightPage.scrollTop = rightScrollTop;
     }
     syncMobileContextPanelState();
+    mountPhotoSleeves();
+    if (options.mediaGallery) bindMediaFilters(options.mediaGallery);
+
+    if (isMobileContextPanelOpen) {
+        requestAnimationFrame(() => {
+            if (refs.rightPage?.contains(document.activeElement)) return;
+            refs.rightPage?.focus({ preventScroll: true });
+        });
+    }
+}
+
+function disposeMountedPhotoSleeves(...containers) {
+    disposePhotoSleeves.forEach(dispose => dispose());
+    disposePhotoSleeves = [];
+    containers.forEach(container => container.querySelectorAll('.photo-sleeve img').forEach(releasePhotoSleeveMedia));
+}
+
+function mountPhotoSleeves() {
     document.querySelectorAll('#leftPage [data-virtual-photos], #rightPage [data-virtual-photos]').forEach(sleeve => {
         const { media, grouped } = pendingPhotoSleeves.get(sleeve.dataset.virtualPhotos);
         photoSleeveMedia.set(sleeve, media);
@@ -5049,13 +5130,6 @@ function setPages(leftHtml, rightHtml, rightPageMode = '', options = {}) {
     });
     pendingPhotoSleeves.clear();
     observePhotoSleeveMedia();
-
-    if (isMobileContextPanelOpen) {
-        requestAnimationFrame(() => {
-            if (refs.rightPage?.contains(document.activeElement)) return;
-            refs.rightPage?.focus({ preventScroll: true });
-        });
-    }
 }
 
 function getLedgerRecords(params) {
@@ -5313,7 +5387,8 @@ function renderPhotoSleeve(record, options = {}) {
     const { previewRows = 0, showViewAll = false, groupByRecord = false } = options;
     const isPreview = Number.isFinite(previewRows) && previewRows > 0;
     const shouldRenderViewAll = showViewAll && isPreview && media.length > previewRows;
-    const viewAllHref = options.viewAllHref || serializeRoute({ name: 'photos', params: { id: record.id } });
+    const viewAllHref = shouldRenderViewAll
+        ? (options.viewAllHref || serializeRoute({ name: 'photos', params: { id: record.id } })) : '';
 
     if (!isPreview && media.length > 60) {
         const key = String(++photoSleeveSequence);

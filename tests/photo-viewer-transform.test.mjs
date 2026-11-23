@@ -30,6 +30,11 @@ test('图片初始适配仍不会超过原始尺寸', () => {
     assert.equal(result, 1);
 });
 
+test('超宽的图片也按舞台宽度完整显示', () => {
+    const result = getInitialPhotoScale({ stageWidth: 450, stageHeight: 600, naturalWidth: 9000, naturalHeight: 600 });
+    assert.equal(result, 0.05);
+});
+
 test('小于舞台的照片仍允许少量拖动，且不会被拖离视野', () => {
     const result = constrainPhotoViewerTranslate({
         translateX: 420,

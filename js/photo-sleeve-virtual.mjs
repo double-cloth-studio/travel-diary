@@ -21,7 +21,9 @@ export function mountVirtualPhotoSleeve(sleeve, { media, grouped, renderItem, re
     sleeve.append(content);
     const mounted = new Map();
     let rows = [];
+    let columns = 0;
     let width = 0;
+    let needsLayout = true;
     let frame;
     let disposed = false;
 
@@ -54,8 +56,12 @@ export function mountVirtualPhotoSleeve(sleeve, { media, grouped, renderItem, re
 
     function layout() {
         const style = getComputedStyle(sleeve);
-        const columns = style.gridTemplateColumns.split(' ').filter(Boolean).length || 1;
+        const nextColumns = style.gridTemplateColumns.split(' ').filter(Boolean).length || 1;
         const gap = parseFloat(style.rowGap) || 0;
+        if (columns !== nextColumns) {
+            for (const [index, node] of mounted) removeRow(index, node);
+            columns = nextColumns;
+        }
         content.style.setProperty('--photo-columns', columns);
         rows = buildPhotoSleeveRows(media, columns, grouped);
         // 一次批量测量当前列宽下的按钮和各组标题，长标题换行也参与总高度。
@@ -65,8 +71,9 @@ export function mountVirtualPhotoSleeve(sleeve, { media, grouped, renderItem, re
         const headings = rows.filter(row => row.heading).map(createRow);
         probe.append(sample, ...headings);
         content.append(probe);
-        const itemHeight = sample.getBoundingClientRect().height;
-        const headingHeights = headings.map(node => node.getBoundingClientRect().height);
+        // 纸页动画可能缩放祖先元素，使用未经过变换的布局高度计算滚动范围。
+        const itemHeight = parseFloat(getComputedStyle(sample).height);
+        const headingHeights = headings.map(node => parseFloat(getComputedStyle(node).height));
         probe.remove();
         let top = 0;
         let headingIndex = 0;
@@ -75,37 +82,51 @@ export function mountVirtualPhotoSleeve(sleeve, { media, grouped, renderItem, re
             row.height = row.heading ? headingHeights[headingIndex++] : itemHeight;
             top += row.height + gap;
         }
-        for (const [index, node] of mounted) removeRow(index, node);
+        for (const [index, node] of mounted) node.style.top = `${rows[index].top}px`;
         content.style.height = `${Math.max(0, top - gap)}px`;
     }
 
     function update() {
         frame = undefined;
         if (disposed || !sleeve.isConnected || !sleeve.clientWidth) return;
-        if (width !== sleeve.clientWidth) {
-            width = sleeve.clientWidth;
-            layout();
-        }
-        const bounds = content.getBoundingClientRect();
         // 桌面右页独立滚动，手机纸页 display: contents 时由窗口滚动。
         const page = sleeve.closest('.paper-page');
         const pageBounds = page?.getBoundingClientRect();
         const clipped = pageBounds?.height > 0 && /(auto|scroll)/.test(getComputedStyle(page).overflowY);
         const top = clipped ? Math.max(0, pageBounds.top) : 0;
         const bottom = clipped ? Math.min(innerHeight, pageBounds.bottom) : innerHeight;
-        const overscan = Math.max(300, bottom - top);
-        const from = top - bounds.top - overscan;
-        const to = bottom - bounds.top + overscan;
-        // 二分定位首行，滚到列表末尾也无需遍历前面所有媒体。
-        let low = 0;
-        let high = rows.length;
-        while (low < high) {
-            const middle = (low + high) >>> 1;
-            if (rows[middle].top + rows[middle].height < from) low = middle + 1;
-            else high = middle;
+        let contentTop = content.getBoundingClientRect().top;
+        if (needsLayout || width !== sleeve.clientWidth) {
+            width = sleeve.clientWidth;
+            needsLayout = false;
+            const offset = top - contentTop;
+            const visibleRow = offset > 0 ? rows[findRow(offset)] : null;
+            const focusIndex = Number(document.activeElement?.closest('.photo-sleeve-button')?.dataset.mediaIndex);
+            const restoreFocus = content.contains(document.activeElement);
+            layout();
+            contentTop = content.getBoundingClientRect().top;
+            if (visibleRow) {
+                const anchor = rows.find(row => row.heading === visibleRow.heading && (row.heading
+                    ? row.start === visibleRow.start : row.start <= visibleRow.start && row.end > visibleRow.start));
+                if (anchor) {
+                    const delta = contentTop - top + anchor.top + Math.min(offset - visibleRow.top, anchor.height);
+                    if (Math.abs(delta) >= 1) {
+                        if (clipped) page.scrollTop += delta;
+                        else window.scrollBy({ top: delta, behavior: 'instant' });
+                        contentTop = content.getBoundingClientRect().top;
+                    }
+                }
+            }
+            if (restoreFocus && Number.isInteger(focusIndex)) {
+                const index = rows.findIndex(row => !row.heading && focusIndex >= row.start && focusIndex < row.end);
+                if (index >= 0) mountRow(index).querySelector(`[data-media-index="${focusIndex}"]`).focus({ preventScroll: true });
+            }
         }
+        const overscan = Math.max(300, bottom - top);
+        const from = top - contentTop - overscan;
+        const to = bottom - contentTop + overscan;
         const needed = new Set();
-        for (let index = low; index < rows.length && rows[index].top <= to; index++) {
+        for (let index = findRow(from); index < rows.length && rows[index].top <= to; index++) {
             needed.add(index);
             mountRow(index);
         }
@@ -114,8 +135,24 @@ export function mountVirtualPhotoSleeve(sleeve, { media, grouped, renderItem, re
         }
     }
 
+    function findRow(offset) {
+        let low = 0;
+        let high = rows.length;
+        while (low < high) {
+            const middle = (low + high) >>> 1;
+            if (rows[middle].top + rows[middle].height < offset) low = middle + 1;
+            else high = middle;
+        }
+        return low;
+    }
+
     function scheduleUpdate() {
         if (!disposed && frame === undefined) frame = requestAnimationFrame(update);
+    }
+
+    function invalidateLayout() {
+        needsLayout = true;
+        scheduleUpdate();
     }
 
     function handleKeydown(event) {
@@ -132,18 +169,20 @@ export function mountVirtualPhotoSleeve(sleeve, { media, grouped, renderItem, re
     }
 
     addEventListener('scroll', scheduleUpdate, { capture: true, passive: true });
-    addEventListener('resize', scheduleUpdate);
+    addEventListener('resize', invalidateLayout);
     sleeve.addEventListener('keydown', handleKeydown);
     const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(scheduleUpdate) : null;
     observer?.observe(sleeve);
-    document.fonts?.ready.then(() => { width = 0; scheduleUpdate(); });
+    document.fonts?.addEventListener('loadingdone', invalidateLayout);
+    document.fonts?.ready.then(invalidateLayout);
     update();
     return () => {
         disposed = true;
         cancelAnimationFrame(frame);
         observer?.disconnect();
         removeEventListener('scroll', scheduleUpdate, true);
-        removeEventListener('resize', scheduleUpdate);
+        removeEventListener('resize', invalidateLayout);
+        document.fonts?.removeEventListener('loadingdone', invalidateLayout);
         sleeve.removeEventListener('keydown', handleKeydown);
         for (const [index, node] of mounted) removeRow(index, node);
     };

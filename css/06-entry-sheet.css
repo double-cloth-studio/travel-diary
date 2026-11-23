@@ -83,7 +83,14 @@
 }
 
 .photo-sleeve-virtual { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
-.photo-sleeve-virtual-content { position: relative; grid-column: 1 / -1; overflow-anchor: none; }
+.photo-sleeve-virtual-content {
+    position: relative;
+    grid-column: 1 / -1;
+    overflow-anchor: none;
+    /* 行的旋转和悬停阴影可以绘制到边缘，挂载行时不改变滚动范围。 */
+    overflow: clip;
+    overflow-clip-margin: 14px;
+}
 .photo-sleeve-virtual-row {
     position: absolute;
     width: 100%;
@@ -308,6 +315,25 @@
 
 /* 桌面端保持原有左右书页结构，移动端由响应式层把摘要和媒体网格串成连续纸面。 */
 .entry-photos-summary { display: contents; }
+
+.media-filters {
+    display: grid;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.media-filters label { display: block; margin-bottom: 6px; }
+.media-filters select {
+    width: 100%;
+    min-height: 44px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: var(--ink);
+    background: var(--paper-50);
+    font: inherit;
+}
+.media-filters .place-count { margin: 0; }
 
 .media-overview {
     margin-top: 28px;
@@ -1434,7 +1460,7 @@ a.media-file-link:hover .media-file-name { text-decoration: underline; text-unde
 .record-editor [data-editor-existing-group] > [data-media-viewer-group] { position: relative; padding-right: 56px; }
 .record-editor-existing-media .media-file-actions { position: relative; }
 .record-editor [data-media-drag] { position: absolute; right: -56px; top: 50%; transform: translateY(-50%); }
-.record-editor [data-media-drag-group] { position: absolute; right: 0; width: 44px; }
+.record-editor [data-media-drag-group] { color: var(--stamp); border-color: currentColor; }
 .record-editor .media-file-drag svg { flex-shrink: 0; width: 20px; height: 20px; fill: currentColor; stroke: none; }
 .record-editor .media-file-drag[hidden] { display: none; }
 .record-editor .media-file-drag:active:not(:disabled),

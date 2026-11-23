@@ -829,7 +829,7 @@ test('日记页最多预览三行媒体且提供全集媒体页', () => {
     assert.match(appJs, /data-action="view-all-photos"/);
     assert.match(appJs, /查看全部媒体/);
     assert.match(appJs, /function renderEntryPhotosRoute\(params = \{\}\)/);
-    assert.match(appJs, /renderPhotoSleeve\(record\)/);
+    assert.match(appJs, /renderMediaResults\(media\)/);
     assert.match(journalCss, /\.photo-sleeve-action\s*{/);
 });
 
@@ -1016,7 +1016,7 @@ test('图片与视频初始居中适配舞台且平移不会完全移出屏幕',
     assert.match(photoViewerTransformJs, /function getPhotoViewerRenderMetrics/);
     assert.match(appJs, /image\.addEventListener\('load', \(\) => \{ void revealPhotoViewerImage\(image\); \}, \{ once: true \}\)/);
     assert.match(photoViewerTransformJs, /const fitScale = Math\.min\(stageWidth \/ naturalWidth, stageHeight \/ naturalHeight\);/);
-    assert.match(photoViewerTransformJs, /const containedScale = allowUpscale \? fitScale : Math\.min\(1, fitScale\);/);
+    assert.match(photoViewerTransformJs, /return allowUpscale \? fitScale : Math\.min\(1, fitScale\);/);
     assert.match(appJs, /allowUpscale: media\.matches\('\[data-video-viewer-video\]'\)/);
     assert.match(appJs, /photoViewerState\.scale = getInitialPhotoScale\(stage, media\);/);
     assert.match(appJs, /photoViewerState\.initialScale = photoViewerState\.scale;/);

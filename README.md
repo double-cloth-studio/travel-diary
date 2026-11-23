@@ -317,6 +317,9 @@ npm run serve
 npm start -- --port 8080
 npm start -- --dir "项目目录" --port 9000
 
+# 默认在启动终端记录浏览器发来的 GET / POST 方法、路径和响应状态码
+npm start -- --no-request-log
+
 # 仅允许本机连接（默认）
 npm start -- --local
 # 允许局域网访问页面，远程认证和写入仍默认关闭

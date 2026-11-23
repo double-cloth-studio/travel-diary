@@ -2,7 +2,6 @@ const PHOTO_VIEWER_MIN_SCALE_BASE = 0.25;
 const PHOTO_VIEWER_MIN_SCALE_RATIO = 0.5;
 const PHOTO_VIEWER_MAX_SCALE_BASE = 5;
 const PHOTO_VIEWER_MAX_SCALE_RATIO = 5;
-const PHOTO_VIEWER_FIT_MIN_SCALE = 0.08;
 
 export function getInitialPhotoScale({ stageWidth, stageHeight, naturalWidth, naturalHeight, allowUpscale = false }) {
     if (!naturalWidth || !naturalHeight || !stageWidth || !stageHeight) {
@@ -10,8 +9,7 @@ export function getInitialPhotoScale({ stageWidth, stageHeight, naturalWidth, na
     }
 
     const fitScale = Math.min(stageWidth / naturalWidth, stageHeight / naturalHeight);
-    const containedScale = allowUpscale ? fitScale : Math.min(1, fitScale);
-    return Math.max(PHOTO_VIEWER_FIT_MIN_SCALE, containedScale);
+    return allowUpscale ? fitScale : Math.min(1, fitScale);
 }
 
 export function getMinimumPhotoScale(initialScale = 1) {

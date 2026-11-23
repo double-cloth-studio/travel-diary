@@ -21,6 +21,14 @@ export function stubSearchNavigation(route) {
 export function stopTestPageMedia(...images) {
     images.forEach(image => pageMediaObservers.get(image)?.());
 }
+export function getTestPageMediaLoad(image) {
+    return pageMediaLoads.get(image);
+}
+export function stubPageTurns(pageTurns) {
+    const previous = refs.pageTurns;
+    refs.pageTurns = pageTurns;
+    return () => { refs.pageTurns = previous; };
+}
 export function renderTestEntry(record, navigation, { returnHash = '#ledger', missing = false, from } = {}) {
     const originals = { setPages, getEntryNavigation, travelModel, lastReadingHash };
     let result;
@@ -416,6 +424,22 @@ test('原生对话框内的媒体查看器接收切换快捷键，背景对话�
     });
     assert.equal(state.index, 1);
     assert.equal(prevented, 1);
+});
+
+test('日记方向键调用可用的翻页按钮，并保留输入框和修饰键行为', t => {
+    const previous = globalThis.document;
+    const navigation = app.stubSearchNavigation({ name: 'entry', params: {} });
+    const calls = [];
+    const restoreTurns = app.stubPageTurns({ querySelector: selector => selector.includes('entry-next')
+        ? { click: () => calls.push('next') } : null });
+    globalThis.document = { querySelector: () => null, body: { querySelector: () => null } };
+    t.after(() => { globalThis.document = previous; navigation.restore(); restoreTurns(); });
+    const event = { key: 'ArrowRight', preventDefault: () => calls.push('prevent'), target: { closest: () => null } };
+    app.handleDocumentKeydown(event);
+    app.handleDocumentKeydown({ ...event, key: 'ArrowLeft' });
+    app.handleDocumentKeydown({ ...event, ctrlKey: true });
+    app.handleDocumentKeydown({ ...event, target: { closest: selector => selector.includes('input') ? {} : null } });
+    assert.deepEqual(calls, ['prevent', 'next']);
 });
 
 test('跳到内容直接聚焦正文，不改变章节路由', t => {
@@ -1438,7 +1462,7 @@ test('图片与视频封面只在进入视口后读取预览缓存，换页解�
     assert.equal(video.src, undefined);
     assert.equal(requests.length, 0);
     first.callback([{ target: video, isIntersecting: true }]);
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await app.getTestPageMediaLoad(video);
     assert.match(video.src, /^blob:/);
     URL.revokeObjectURL(video.src);
     assert.ok(requests.includes('.cache/media-previews/videos/trip/movie.mp4.jpg'));
@@ -1455,7 +1479,8 @@ test('图片与视频封面只在进入视口后读取预览缓存，换页解�
     const fallback = { ...video, dataset: { src: 'fallback.mp4.jpg' }, closest: selector => selector === '[hidden]' ? null : video.closest() };
     globalThis.document.querySelectorAll = () => [fallback];
     app.observePhotoSleeveMedia();
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await app.getTestPageMediaLoad(fallback);
     assert.match(fallback.src, /^blob:/);
     URL.revokeObjectURL(fallback.src);
 });

@@ -163,6 +163,12 @@ test('端口参数不能越界且被占用时自动尝试后续端口', async ()
     await new Promise(resolve => occupied.server.close(resolve));
 });
 
+test('启动参数可关闭请求日志，最后一个日志参数生效', () => {
+    const parse = args => parseArgs(['--dir', root, ...args]);
+    assert.equal(parse(['--no-request-log']).requestLog, false);
+    assert.equal(parse(['--no-request-log', '--request-log']).requestLog, true);
+});
+
 test('监听范围与写入模式独立，默认及单独 network 均保持 local 写入', () => {
     const parse = args => parseArgs(['--dir', root, ...args]);
     assert.deepEqual(parse([]), { dir: root, port: 9000, local: true, writeMode: 'local', allowedOrigins: [] });

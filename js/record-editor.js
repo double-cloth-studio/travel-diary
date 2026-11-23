@@ -86,7 +86,6 @@ export function createRecordEditor(onSaved, getRecords = () => []) {
     let autocompletePointer = null;
     let suppressAutocompleteClick = false;
     let mediaDrag = null;
-    const mediaGroupObserver = new ResizeObserver(updateMediaGroupSlider);
     const userEditedAutofillFields = new Set();
     const autoFilledValues = new Map();
     const userEditedPaths = new Set();
@@ -312,7 +311,6 @@ export function createRecordEditor(onSaved, getRecords = () => []) {
                             <h4>文件顺序</h4>
                             <div data-media-viewer-group>
                                 <ul class="record-editor-existing-media media-file-list" data-editor-existing-media aria-label="图片与视频文件操作"></ul>
-                                <button class="media-file-drag" type="button" data-media-drag-group hidden aria-label="拖动所选文件组" title="上下拖动所选文件；也可用方向键调整">${mediaDragIcon()}</button>
                             </div>
                         </div>
                         <div class="record-editor-media-group record-editor-removed-group" data-editor-removed-group hidden>
@@ -367,8 +365,6 @@ export function createRecordEditor(onSaved, getRecords = () => []) {
                     <p class="record-editor-note">草稿仅保留在本页，刷新或离开前请保存或导出。</p>
                 </footer>
             </form>`;
-        mediaGroupObserver.disconnect();
-        mediaGroupObserver.observe(dialog.querySelector('[data-media-viewer-group]'));
         saved = false;
         dirty = false;
         uploads = [];
@@ -548,12 +544,21 @@ export function createRecordEditor(onSaved, getRecords = () => []) {
 
     function updateMediaSelection() {
         const items = orderedMedia();
-        const keys = new Set(items.map(item => item.key));
-        for (const key of selectedMedia) if (!keys.has(key)) selectedMedia.delete(key);
+        const itemsByKey = new Map(items.map(item => [item.key, item]));
+        for (const key of selectedMedia) if (!itemsByKey.has(key)) selectedMedia.delete(key);
+        const canDragGroup = selectedMedia.size > 1 && selectedMedia.size < items.length;
         dialog.querySelectorAll('[data-media-select]').forEach(checkbox => {
-            checkbox.checked = selectedMedia.has(checkbox.dataset.mediaSelect);
+            const key = checkbox.dataset.mediaSelect;
+            const row = checkbox.closest('li');
+            const handle = row.querySelector('[data-media-drag]');
+            checkbox.checked = selectedMedia.has(key);
             checkbox.disabled = saved;
-            checkbox.closest('li').classList.toggle('is-selected', checkbox.checked);
+            row.classList.toggle('is-selected', checkbox.checked);
+            const dragsGroup = canDragGroup && checkbox.checked;
+            handle.toggleAttribute('data-media-drag-group', dragsGroup);
+            const name = itemsByKey.get(key).name;
+            handle.setAttribute('aria-label', dragsGroup ? `从 ${name} 拖动所选 ${selectedMedia.size} 项排序` : `拖动 ${name} 排序`);
+            handle.title = dragsGroup ? '上下拖动所选文件；也可用方向键调整' : '上下拖动排序；也可用方向键调整';
         });
         dialog.querySelector('[data-editor-media-batch]').hidden = saved || !items.length;
         dialog.querySelector('[data-media-sort-time]').disabled = saved || items.length < 2;
@@ -570,11 +575,6 @@ export function createRecordEditor(onSaved, getRecords = () => []) {
         const clear = dialog.querySelector('[data-media-select-clear]');
         clear.hidden = !selectedMedia.size;
         clear.disabled = saved || !selectedMedia.size;
-        const groupDrag = dialog.querySelector('[data-media-drag-group]');
-        groupDrag.hidden = selectedMedia.size < 2 || !items.some(item => !selectedMedia.has(item.key));
-        groupDrag.disabled = saved;
-        groupDrag.setAttribute('aria-label', `拖动所选 ${selectedMedia.size} 项排序`);
-        updateMediaGroupSlider();
         dialog.querySelectorAll('[data-media-batch]').forEach(button => {
             const action = button.dataset.mediaBatch;
             button.hidden = !selectedMedia.size;
@@ -582,24 +582,6 @@ export function createRecordEditor(onSaved, getRecords = () => []) {
                 && items[index + (action === 'previous' ? -1 : 1)]
                 && !selectedMedia.has(items[index + (action === 'previous' ? -1 : 1)].key)));
         });
-    }
-
-    function updateMediaGroupSlider() {
-        const handle = dialog.querySelector('[data-media-drag-group]');
-        const allRows = [...handle.parentElement.querySelectorAll('[data-media-key]')];
-        const first = allRows.findIndex(row => selectedMedia.has(row.dataset.mediaKey));
-        const last = allRows.findLastIndex(row => selectedMedia.has(row.dataset.mediaKey));
-        // 大滑块覆盖的行不再显示小手柄，避免非连续多选时控件重叠。
-        allRows.forEach((row, index) => {
-            row.querySelector('[data-media-drag]').hidden = !handle.hidden && index >= first && index <= last;
-        });
-        if (handle.hidden) return;
-        const group = handle.parentElement;
-        const rows = [...group.querySelectorAll('[data-media-key]')].filter(row => selectedMedia.has(row.dataset.mediaKey));
-        if (!rows.length) return;
-        const top = rows[0].getBoundingClientRect().top - group.getBoundingClientRect().top;
-        handle.style.top = `${top}px`;
-        handle.style.height = `${Math.max(44, rows.at(-1).getBoundingClientRect().bottom - rows[0].getBoundingClientRect().top)}px`;
     }
 
     function updateMediaDragTarget() {
@@ -675,8 +657,7 @@ export function createRecordEditor(onSaved, getRecords = () => []) {
             dialog.querySelector('[data-editor-media-announcement]').textContent = changed
                 ? `已调整 ${drag.keys.size} 项的顺序，保存后生效。` : '顺序未更改。';
         }
-        const focus = drag.handle.matches('[data-media-drag-group]') ? drag.handle
-            : [...dialog.querySelectorAll('[data-media-key]')].find(row => row.dataset.mediaKey === drag.key)?.querySelector('[data-media-drag]');
+        const focus = dialog.querySelector(`[data-media-key="${CSS.escape(drag.key)}"] [data-media-drag]`);
         focus?.focus({ preventScroll: true });
     }
 
@@ -1236,13 +1217,14 @@ export function createRecordEditor(onSaved, getRecords = () => []) {
             event.preventDefault();
             finishMediaDrag();
         }
-        const dragHandle = event.target.closest('[data-media-drag], [data-media-drag-group]');
+        const dragHandle = event.target.closest('[data-media-drag]');
         if (dragHandle && !saved && !busy && !readingPhotos && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
             event.preventDefault();
-            const key = dragHandle.closest('[data-media-key]')?.dataset.mediaKey;
-            const keys = key ? new Set([key]) : new Set(selectedMedia);
+            const key = dragHandle.closest('[data-media-key]').dataset.mediaKey;
+            const keys = dragHandle.hasAttribute('data-media-drag-group') ? new Set(selectedMedia) : new Set([key]);
             operateMedia(keys, event.key === 'ArrowUp' ? 'previous' : 'next');
-            const focus = key ? [...dialog.querySelectorAll('[data-media-key]')].find(row => row.dataset.mediaKey === key)?.querySelector('[data-media-drag]') : dragHandle;
+            const focus = dialog.querySelector(`[data-media-key="${CSS.escape(key)}"] [data-media-drag]`);
+            focus?.closest('li').scrollIntoView({ block: 'nearest', inline: 'nearest' });
             focus?.focus({ preventScroll: true });
         }
         const tab = event.target.closest('[data-editor-view]');
@@ -1321,15 +1303,15 @@ export function createRecordEditor(onSaved, getRecords = () => []) {
         highlight.scrollLeft = event.target.scrollLeft;
     }, true);
     dialog.addEventListener('pointerdown', event => {
-        const handle = event.target.closest('[data-media-drag], [data-media-drag-group]');
+        const handle = event.target.closest('[data-media-drag]');
         if (handle && !handle.disabled && !saved && !busy && !readingPhotos && event.button === 0 && event.isPrimary) {
             event.preventDefault();
             window.getSelection()?.removeAllRanges();
             dialog.classList.add('is-media-dragging');
-            const key = handle.closest('[data-media-key]')?.dataset.mediaKey;
-            const keys = key ? new Set([key]) : new Set(selectedMedia);
+            const key = handle.closest('[data-media-key]').dataset.mediaKey;
+            const keys = handle.hasAttribute('data-media-drag-group') ? new Set(selectedMedia) : new Set([key]);
             mediaDrag = { id: event.pointerId, x: event.clientX, y: event.clientY, startY: event.clientY,
-                key, keys, handle, active: false, targets: new Map() };
+                key, keys, active: false, targets: new Map() };
             handle.focus({ preventScroll: true });
             dialog.setPointerCapture(event.pointerId);
             return;
