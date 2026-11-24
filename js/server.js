@@ -72,6 +72,7 @@ function parseArgs(argv) {
   const defaults = loadRuntimeConfig(path.resolve(args.dir)).server;
   args.port ??= defaults.port;
   args.local ??= defaults.local;
+  args.requestLog ??= false;
   args.writeMode ??= defaults.writeMode;
   args.allowedOrigins ??= defaults.publicOrigin && args.writeMode === 'remote' ? [defaults.publicOrigin] : defaults.allowedOrigins;
   if (!Number.isInteger(args.port) || args.port <= 0 || args.port > 65535) {
@@ -96,7 +97,7 @@ function printHelpAndExit() {
 Travel Diary server
 
 Usage:
-  node js/server.js [--dir PATH] [--port PORT] [--local|--network] [--no-request-log] [--write-mode=MODE] [--allowed-origin=ORIGIN]
+  node js/server.js [--dir PATH] [--port PORT] [--local|--network] [--request-log] [--write-mode=MODE] [--allowed-origin=ORIGIN]
 
 Options:
   ${CONFIG_FILENAME}  从服务目录读取默认配置
@@ -105,7 +106,7 @@ Options:
   --port PORT   Starting port (default: ${CONFIG.defaultPort})
   --local       Bind to 127.0.0.1 only (default)
   --network     Bind to 0.0.0.0 for LAN access
-  --no-request-log  关闭 GET 和 POST 请求日志（默认开启，--request-log 可显式开启）
+  --request-log  开启 GET 和 POST 请求日志（默认关闭，--no-request-log 可显式关闭）
   --write-mode  Write policy: local (default) or remote
   --allowed-origin  Exact HTTPS Origin allowed in remote mode (repeatable)
   --help, -h    Show this help
@@ -633,7 +634,7 @@ async function main() {
   const { server, port, structure } = await listenWithRetries(rootDir, args.port, !args.local, {
     writeMode: args.writeMode,
     allowedOrigins: args.allowedOrigins,
-    requestLog: args.requestLog ?? true
+    requestLog: args.requestLog
   });
   const localhostUrl = `http://localhost:${port}`;
   const networkUrl = args.local ? 'disabled (local only)' : `http://${getLocalIp()}:${port}`;
@@ -645,7 +646,7 @@ async function main() {
   console.log(`配置文件：${configFiles.length ? configFiles.map(name => path.join(rootDir, name)).join(' → ') : '内置默认值'}`);
   console.log(`Bind: ${args.local ? '127.0.0.1 (--local)' : '0.0.0.0 (--network)'}`);
   console.log(`Write mode: ${args.writeMode}`);
-  console.log(`请求日志：${args.requestLog === false ? '关闭' : '开启（GET / POST）'}`);
+  console.log(`请求日志：${args.requestLog ? '开启（GET / POST）' : '关闭'}`);
   if (args.writeMode === 'remote') console.log(`Allowed origins: ${args.allowedOrigins.join(', ')}`);
   console.log('Authentication: .secrets/auth.json (scrypt + server session)');
   if (!structure.authConfigured) {

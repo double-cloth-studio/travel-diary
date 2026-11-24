@@ -163,18 +163,19 @@ test('端口参数不能越界且被占用时自动尝试后续端口', async ()
     await new Promise(resolve => occupied.server.close(resolve));
 });
 
-test('启动参数可关闭请求日志，最后一个日志参数生效', () => {
+test('请求日志默认关闭，可显式开启且最后一个日志参数生效', () => {
     const parse = args => parseArgs(['--dir', root, ...args]);
+    assert.equal(parse([]).requestLog, false);
     assert.equal(parse(['--no-request-log']).requestLog, false);
     assert.equal(parse(['--no-request-log', '--request-log']).requestLog, true);
 });
 
 test('监听范围与写入模式独立，默认及单独 network 均保持 local 写入', () => {
     const parse = args => parseArgs(['--dir', root, ...args]);
-    assert.deepEqual(parse([]), { dir: root, port: 9000, local: true, writeMode: 'local', allowedOrigins: [] });
+    assert.deepEqual(parse([]), { dir: root, port: 9000, local: true, requestLog: false, writeMode: 'local', allowedOrigins: [] });
     assert.equal(parse(['--network']).writeMode, 'local');
     assert.deepEqual(parse(['--local', '--write-mode=remote', '--allowed-origin=https://diary.example']), {
-        dir: root, port: 9000, local: true, writeMode: 'remote', allowedOrigins: ['https://diary.example']
+        dir: root, port: 9000, local: true, requestLog: false, writeMode: 'remote', allowedOrigins: ['https://diary.example']
     });
     assert.throws(() => parse(['--write-mode', 'remote']), /allowed-origin/);
     assert.throws(() => parse(['--write-mode=remote', '--allowed-origin=http://diary.example']), /HTTPS Origin/);

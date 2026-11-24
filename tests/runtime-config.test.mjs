@@ -168,7 +168,7 @@ test('服务读取 --dir 指向的配置，命令行覆盖配置且来源数组�
     const root = await fixture(t);
     await saveConfig(root, { server: { port: 8080, local: false } });
     assert.deepEqual(parseArgs(['--dir', root]), {
-        dir: root, port: 8080, local: false, writeMode: 'local', allowedOrigins: []
+        dir: root, port: 8080, local: false, requestLog: false, writeMode: 'local', allowedOrigins: []
     });
     assert.equal(parseArgs([`--dir=${root}`, '--port=9001', '--local']).port, 9001);
     assert.equal(parseArgs([`--dir=${root}`, '--local']).local, true);
