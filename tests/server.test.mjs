@@ -170,6 +170,61 @@ test('请求日志默认关闭，可显式开启且最后一个日志参数生�
     assert.equal(parse(['--no-request-log', '--request-log']).requestLog, true);
 });
 
+test('连续受限端口超过 100 个时仍能启动并响应请求', async t => {
+    const listen = http.Server.prototype.listen;
+    const attempted = [];
+    t.mock.method(http.Server.prototype, 'listen', function (port, ...args) {
+        attempted.push(port);
+        if (attempted.length <= 166) {
+            process.nextTick(() => this.emit('error', Object.assign(new Error('模拟系统保留端口'), { code: 'EACCES' })));
+            return this;
+        }
+        return listen.call(this, port, ...args);
+    });
+    const result = await listenWithRetries(root, 30_000, false);
+    t.after(() => new Promise(resolve => result.server.close(resolve)));
+    assert.deepEqual(attempted.slice(0, 166), Array.from({ length: 166 }, (_, index) => 30_000 + index));
+    assert.ok(result.port >= 30_166);
+    assert.equal(result.server.address().port, result.port);
+    const response = await new Promise((resolve, reject) => {
+        http.get(`http://127.0.0.1:${result.port}/healthz`, res => {
+            res.resume();
+            res.on('end', () => resolve(res.statusCode));
+        }).on('error', reject);
+    });
+    assert.equal(response, 200);
+});
+
+test('端口重试遵守配置和端口边界，其他监听错误直接返回', async t => {
+    for (const scenario of [
+        { code: 'EACCES', port: 9000, maxPortRetries: 1, expected: [9000] },
+        { code: 'EACCES', port: 9000, maxPortRetries: 3, expected: [9000, 9001, 9002] },
+        { code: 'EADDRINUSE', port: 65535, maxPortRetries: 1000, expected: [65535] },
+        { code: 'EACCES', port: 65535, maxPortRetries: 1000, expected: [65535] },
+        { code: 'EADDRNOTAVAIL', port: 9000, maxPortRetries: 3, expected: [9000] }
+    ]) {
+        await t.test(`${scenario.code} / ${scenario.port} / ${scenario.maxPortRetries}`, async t => {
+            const attempted = [];
+            const error = Object.assign(new Error(`模拟 ${scenario.code}`), { code: scenario.code });
+            t.mock.method(http.Server.prototype, 'listen', function (port) {
+                attempted.push(port);
+                process.nextTick(() => this.emit('error', error));
+                return this;
+            });
+            await assert.rejects(listenWithRetries(root, scenario.port, false, { maxPortRetries: scenario.maxPortRetries }), failure => {
+                if (scenario.code === 'EADDRNOTAVAIL') assert.equal(failure, error);
+                else {
+                    assert.equal(failure.cause, error);
+                    assert.ok(failure.message.includes(`between ${scenario.port} and ${scenario.expected.at(-1)}.`));
+                    assert.match(failure.message, new RegExp(scenario.code));
+                }
+                return true;
+            });
+            assert.deepEqual(attempted, scenario.expected);
+        });
+    }
+});
+
 test('监听范围与写入模式独立，默认及单独 network 均保持 local 写入', () => {
     const parse = args => parseArgs(['--dir', root, ...args]);
     assert.deepEqual(parse([]), { dir: root, port: 9000, local: true, requestLog: false, writeMode: 'local', allowedOrigins: [] });

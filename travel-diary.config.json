@@ -3,7 +3,7 @@
   "server": {
     "port": 9000,
     "local": true,
-    "maxPortRetries": 100,
+    "maxPortRetries": 1000,
     "writeMode": "local",
     "allowedOrigins": []
   },

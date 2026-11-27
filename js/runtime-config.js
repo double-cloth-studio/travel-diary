@@ -5,7 +5,7 @@ const { normalizeBasePath, normalizePublicOrigin } = require('./deployment-confi
 const CONFIG_FILENAME = 'travel-diary.config.json';
 const LOCAL_CONFIG_FILENAME = 'travel-diary.config.local.json';
 const DEFAULT_CONFIG = {
-    server: { port: 9000, local: true, maxPortRetries: 100, writeMode: 'local', allowedOrigins: [], basePath: '/', publicOrigin: '' },
+    server: { port: 9000, local: true, maxPortRetries: 1000, writeMode: 'local', allowedOrigins: [], basePath: '/', publicOrigin: '' },
     mediaPreviews: { enabled: true, browserPath: '', progressTimeoutMs: 70000 }
 };
 

@@ -241,7 +241,7 @@ cd travel-diary
 npm start
 ```
 
-打开终端输出的地址，默认 `http://localhost:9000`。端口占用时会尝试后续端口。字体和媒体缩略图在首次访问时按需生成，也可提前执行 `npm run fonts` 和 `npm run media:previews`。
+打开终端输出的地址，默认 `http://localhost:9000`。端口占用（`EADDRINUSE`）或被系统拒绝监听（`EACCES`）时会尝试后续端口，默认最多尝试 1000 个端口，以终端输出的实际地址为准。字体和媒体缩略图在首次访问时按需生成，也可提前执行 `npm run fonts` 和 `npm run media:previews`。
 
 ### npm 脚本速查
 
@@ -286,7 +286,7 @@ npm start
 | `$schema` | `"./travel-diary.config.schema.json"` | 为编辑器提供配置补全与校验。 |
 | `server.port` | `9000` | 起始监听端口，范围为 1～65535。 |
 | `server.local` | `true` | `true` 绑定 `127.0.0.1`，`false` 绑定 `0.0.0.0` 以允许局域网访问。 |
-| `server.maxPortRetries` | `100` | 最多尝试的端口数量，范围为 1～65535，包含起始端口。设为 `1` 时端口占用即报错。 |
+| `server.maxPortRetries` | `1000` | 最多尝试的端口数量，范围为 1～65535，包含起始端口。设为 `1` 时端口占用或被系统拒绝监听即报错。 |
 | `server.writeMode` | `"local"` | `local` 仅允许本机认证与写入。`remote` 允许白名单 HTTPS 来源认证与写入，需配置 `allowedOrigins` 并预先在本机设置密码。 |
 | `server.allowedOrigins` | `[]` | `remote` 模式必填的完整 HTTPS Origin 数组，例如 `["https://diary.example.com"]`。`local` 模式保持空数组。 |
 | `mediaPreviews.enabled` | `true` | 缓存缺失时是否启动后端浏览器按需生成。关闭后由前端生成并回传，批量预览命令仍可手动运行。 |

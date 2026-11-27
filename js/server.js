@@ -585,10 +585,11 @@ async function listenWithRetries(rootDir, port, bindAll, options = {}) {
       server.maxHeadersCount = 100;
 
       server.on('error', (error) => {
-        if (error.code === 'EADDRINUSE') {
+        if (error.code === 'EADDRINUSE' || error.code === 'EACCES') {
+          // 系统保留的端口也可能拒绝监听，继续尝试后续端口。
           currentPort += 1;
           if (currentPort > 65535 || currentPort >= port + maxPortRetries) {
-            reject(new Error(`Unable to find a free port between ${port} and ${currentPort}.`));
+            reject(new Error(`Unable to find a free port between ${port} and ${currentPort - 1}. Last error: ${error.message}`, { cause: error }));
             return;
           }
 

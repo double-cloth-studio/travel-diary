@@ -31,7 +31,7 @@
           "minimum": 1,
           "maximum": 65535,
           "default": 9000,
-          "description": "起始监听端口。端口占用时按 maxPortRetries 尝试后续端口，以终端输出为准。"
+          "description": "起始监听端口。端口占用或被系统拒绝监听时按 maxPortRetries 尝试后续端口，以终端输出为准。"
         },
         "local": {
           "type": "boolean",
@@ -42,8 +42,8 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 65535,
-          "default": 100,
-          "description": "最多尝试的端口数量，包含起始端口。设为 1 时端口占用即报错。"
+          "default": 1000,
+          "description": "最多尝试的端口数量，包含起始端口。设为 1 时端口占用或被系统拒绝监听即报错。"
         },
         "writeMode": {
           "type": "string",
