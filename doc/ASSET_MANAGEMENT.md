@@ -14,7 +14,6 @@ data/
 .cache/
 ├── fonts/                 # 自动生成的 WOFF2、字体 CSS 及校验元数据
 ├── media-previews/        # 自动生成的压缩图片与视频封面
-├── image-text/            # 图片文字索引、源文件版本及内容摘要
 ├── media-index.json       # 媒体重复检测指纹
 ├── record-signatures.json # 正文和媒体的文件版本及内容签名缓存
 ├── backup-state.json      # 最近导出的记录比较基准
@@ -89,4 +88,4 @@ HTML 和数据路径相对项目根目录；`css/` 下图像与纹理引用使�
 
 ## 图片文字识别资源
 
-`assets/ocr/` 保存本地 OCR 的固定版本 API、Worker、普通及 SIMD WASM 核心、中英文模型、许可证与来源校验清单，更新流程见 [OCR 资源说明](../assets/ocr/README.md)。资源不进入个人备份；`npm run media:ocr` 将识别结果保存到 `.cache/image-text/`，网页批量读取有效文字到内存，当前图片按需识别也会回传磁盘缓存。源文件版本变化后失效，命令可增量补齐；回收版本独立存储并通过认证清单读取。浏览器的内容摘要缓存继续用于本地 ZIP。OCR 的第三方生成代码和模型不参与字体文字收集。
+`assets/ocr/` 保存本地 OCR 的固定版本 API、Worker、普通及 SIMD WASM 核心、中英文模型、许可证与来源校验清单，更新流程见 [OCR 资源说明](../assets/ocr/README.md)。资源不进入个人备份；识别结果保存在浏览器缓存。OCR 的第三方生成代码和模型不参与字体文字收集。

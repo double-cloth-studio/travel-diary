@@ -1,5 +1,5 @@
 import { orderMedia } from './media-order.mjs?v=2.1.154';
-import { createImageTextSearch, recordImages, recordImageTextMatches, imageTextMatches, clearImageTextCache, preloadImageTextIndex } from './image-text-search.js?v=2.1.154';
+import { createImageTextSearch, recordImages, recordImageTextMatches, imageTextMatches, clearImageTextCache } from './image-text-search.js?v=2.1.154';
 import { createRecycleManager } from './recycle-manager.js?v=2.1.154';
 import { loadTravelData, loadTravelRecords } from './data.js?v=2.1.154';
 import { createRecordEditor } from './record-editor.js?v=2.1.154';
@@ -59,7 +59,7 @@ const BOOK_COVER_TURN_MS = 1180;
 const MOBILE_BOOK_COVER_OPEN_MS = 1040;
 const MOBILE_BOOK_COVER_CLOSE_MS = 920;
 const MOBILE_BOOK_COVER_PAINT_WAIT_MS = 240;
-const SEARCH_UPDATE_DELAY_MS = 32;
+const SEARCH_UPDATE_DELAY_MS = 180;
 const ENTRY_PHOTO_PREVIEW_ROWS = 3;
 const MOBILE_CONTEXT_PANEL_QUERY = '(max-width: 760px)';
 const DEFAULT_VIDEO_VOLUME = 0.85;
@@ -138,8 +138,7 @@ function clearMediaCaches() {
 async function refreshTravelModel(cacheKey = '') {
     if (cacheKey) clearMediaCaches();
     renderedPageHash = '';
-    const [records] = await Promise.all([loadTravelData(cacheKey).then(data => loadTravelRecords(data, cacheKey)), preloadImageTextIndex()]);
-    travelModel = deriveTravelModel(records);
+    travelModel = deriveTravelModel(await loadTravelRecords(await loadTravelData(cacheKey), cacheKey));
 }
 
 async function initApp() {
@@ -321,8 +320,7 @@ async function initApp() {
     try {
         const [ownerName, hydratedRecords] = await Promise.all([
             loadOwnerName(),
-            loadTravelData().then(records => loadTravelRecords(records)),
-            preloadImageTextIndex()
+            loadTravelData().then(records => loadTravelRecords(records))
         ]);
         profileOwnerName = ownerName;
         travelModel = deriveTravelModel(hydratedRecords);

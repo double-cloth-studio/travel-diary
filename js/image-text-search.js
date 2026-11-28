@@ -5,10 +5,10 @@ const CACHE_NAME = 'travel-image-text-v2';
 const MAXIMUM_IMAGE_BYTES = 64 * 1024 * 1024;
 const results = new Map();
 const pending = new Map();
-const contentResults = new Map();
 let generation = 0;
-let preloaded;
+let worker;
 let serial = Promise.resolve();
+let idleTimer;
 
 function normalizeText(text) {
     return String(text || '').normalize('NFKC').toLowerCase()
@@ -26,9 +26,7 @@ export function recordImages(record, resolve = imageSource) {
 
 export function imageTextMatches(key, query) {
     const text = results.get(key);
-    if (!text) return false;
-    const normalized = normalizeText(query);
-    return Boolean(normalized && text.includes(normalized));
+    return Boolean(text && normalizeText(query) && text.includes(normalizeText(query)));
 }
 
 export function recordImageTextMatches(record, query, resolve = imageSource) {
@@ -39,51 +37,10 @@ export function clearImageTextCache() {
     generation++;
     results.clear();
     pending.clear();
-    contentResults.clear();
-    preloaded = undefined;
-}
-
-export async function preloadImageTextIndex() {
-    if (preloaded) return preloaded;
-    const version = generation;
-    preloaded = (async () => {
-        try {
-            const response = await fetch(new URL('.cache/image-text/index.json', window.location.href), {
-                credentials: 'same-origin', signal: AbortSignal.timeout(20000)
-            });
-            if (!response.ok) return;
-            const data = await response.json();
-            if (Array.isArray(data.entries)) await loadImageTextEntries(data.entries, version);
-        } catch { /* 旧服务或缓存不可用时保留按需识别。 */ }
-    })();
-    return preloaded;
-}
-
-export async function loadImageTextEntries(entries, version = generation) {
-    for (let index = 0; index < entries.length; index++) {
-        if (version !== generation) return;
-        const entry = entries[index];
-        if (typeof entry.path !== 'string' || typeof entry.text !== 'string') continue;
-        let key = imageSource(entry.path).key;
-        if (entry.id) {
-            const url = new URL('api/travel-data?mode=recycle-file', window.location.href);
-            url.searchParams.set('id', entry.id);
-            url.searchParams.set('path', entry.path);
-            key = url.href;
-        }
-        const text = normalizeText(entry.text).slice(0, 50000);
-        results.set(key, text);
-        if (/^[a-f0-9]{64}$/.test(entry.digest)) contentResults.set(entry.digest, text);
-        // 大索引分段入内存，避免阻塞输入和首屏绘制。
-        if (index % 100 === 99) {
-            if (globalThis.scheduler?.yield) await scheduler.yield();
-            else await new Promise(resolve => setTimeout(resolve, 0));
-        }
-    }
 }
 
 async function createWorker() {
-    const base = new URL('../assets/ocr/', import.meta.url);
+    const base = new URL('assets/ocr/', window.location.href);
     const api = await import(new URL('tesseract.esm.min.js', base).href);
     const engine = await api.default.createWorker('chi_sim+chi_tra+eng', 1, {
         workerPath: new URL('worker.min.js', base).href,
@@ -93,13 +50,8 @@ async function createWorker() {
         cacheMethod: 'none',
         errorHandler() {}
     });
-    try {
-        await engine.setParameters({ tessedit_pageseg_mode: '11', user_defined_dpi: '300' });
-        return engine;
-    } catch (error) {
-        await engine.terminate();
-        throw error;
-    }
+    await engine.setParameters({ tessedit_pageseg_mode: '11', user_defined_dpi: '300' });
+    return engine;
 }
 
 function withTimeout(operation, milliseconds, onTimeout = () => {}) {
@@ -109,41 +61,27 @@ function withTimeout(operation, milliseconds, onTimeout = () => {}) {
     })]).finally(() => clearTimeout(timer));
 }
 
-// 每个批量槽位独占并复用一个 Worker，网页按需识别仍使用单个实例。
-export function createImageTextRecognizer() {
-    let worker;
-    let idleTimer;
-    const terminate = () => {
-        clearTimeout(idleTimer);
-        const previous = worker;
+async function recognizeImage(blob) {
+    clearTimeout(idleTimer);
+    try {
+        const image = await prepareImage(blob);
+        worker ||= createWorker();
+        const engine = await withTimeout(worker, 90000).catch(error => { throw Object.assign(error, { engineUnavailable: true }); });
+        const { data } = await withTimeout(engine.recognize(image), 60000, () => { void engine.terminate(); });
+        return normalizeText(data.text).slice(0, 50000);
+    } catch (error) {
+        const failed = worker;
         worker = undefined;
-        return previous?.then(engine => engine.terminate()).catch(() => {});
-    };
-    return {
-        terminate,
-        async recognize(blob) {
-            clearTimeout(idleTimer);
-            let image;
-            try {
-                image = await prepareImage(blob);
-                worker ||= createWorker();
-                const engine = await withTimeout(worker, 90000).catch(error => { throw Object.assign(error, { engineUnavailable: true }); });
-                const { data } = await withTimeout(engine.recognize(image), 60000, () => { void engine.terminate(); });
-                return normalizeText(data.text).slice(0, 50000);
-            } catch (error) {
-                void terminate();
-                throw error;
-            } finally {
-                // 及时释放大画布，避免并行任务积累上一张图片的像素缓冲。
-                if (image) { image.width = 1; image.height = 1; }
-                idleTimer = setTimeout(terminate, 30000);
-            }
-        }
-    };
+        void failed?.then(engine => engine.terminate()).catch(() => {});
+        throw error;
+    } finally {
+        idleTimer = setTimeout(() => {
+            const previous = worker;
+            worker = undefined;
+            void previous?.then(engine => engine.terminate()).catch(() => {});
+        }, 30000);
+    }
 }
-
-const recognizer = createImageTextRecognizer();
-export const recognizeImage = blob => recognizer.recognize(blob);
 
 async function prepareImage(blob) {
     let image;
@@ -196,16 +134,12 @@ async function cachedRecognition(blob, recognize) {
     let cache;
     let key;
     try {
-        if (globalThis.crypto?.subtle) {
+        if (globalThis.caches && globalThis.crypto?.subtle) {
             const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
-            const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
-            if (contentResults.has(hash)) return contentResults.get(hash);
-            key = new URL(`.cache/image-text/${hash}`, window.location.href).href;
-            if (globalThis.caches) {
-                cache = await caches.open(CACHE_NAME);
-                const saved = await cache.match(key);
-                if (saved) return normalizeText(await saved.text()).slice(0, 50000);
-            }
+            key = new URL(`.cache/image-text/${Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')}`, window.location.href).href;
+            cache = await caches.open(CACHE_NAME);
+            const saved = await cache.match(key);
+            if (saved) return normalizeText(await saved.text()).slice(0, 50000);
         }
     } catch { /* 缓存受限时继续在内存中识别。 */ }
     const text = normalizeText(await recognize(blob)).slice(0, 50000);
@@ -225,34 +159,8 @@ export async function indexImageText(image, recognize = recognizeImage) {
     const version = generation;
     const task = serial.catch(() => {}).then(async () => {
         if (version !== generation) return;
-        let disk;
-        let endpoint;
-        if (recognize === recognizeImage && image.source == null) {
-            try {
-                const url = new URL(image.url, window.location.href);
-                const base = new URL('.', window.location.href);
-                const relative = decodeURIComponent(url.pathname.slice(base.pathname.length));
-                if (url.origin === base.origin && url.pathname.startsWith(base.pathname) && /^data\/(photos\/|profile\/)/.test(relative)) {
-                    endpoint = new URL('.cache/image-text/file', base);
-                    endpoint.searchParams.set('path', relative);
-                    const response = await fetch(endpoint, { credentials: 'same-origin', signal: AbortSignal.timeout(20000) });
-                    if (response.ok) disk = await response.json();
-                }
-            } catch { /* 索引服务不可用时仍可本地识别。 */ }
-            if (version !== generation) return;
-            if (typeof disk?.text === 'string') { results.set(image.key, normalizeText(disk.text)); return; }
-        }
         const text = await cachedRecognition(await loadImage(image), recognize);
-        if (version === generation) {
-            results.set(image.key, text);
-            if (endpoint && disk?.etag) {
-                try {
-                    await fetch(endpoint, { method: 'PUT', credentials: 'same-origin',
-                        headers: { 'Content-Type': 'text/plain; charset=utf-8', 'If-Match': disk.etag },
-                        body: text, signal: AbortSignal.timeout(20000) });
-                } catch { /* 磁盘写入失败不影响本次搜索。 */ }
-            }
-        }
+        if (version === generation) results.set(image.key, text);
     });
     serial = task;
     pending.set(image.key, task);
@@ -271,22 +179,15 @@ export function createImageTextSearch(input, { getImages, onUpdate, isActive = (
     let revision = 0;
     let timer;
     let disposed = false;
-    let hydrated = false;
     const active = () => !disposed && input.isConnected && isActive();
     async function scan(version) {
         if (!active() || !input.value.trim() || document.hidden) return;
         const images = [...new Map(getImages().filter(image => image?.key && (image.url || image.source != null)).map(image => [image.key, image])).values()];
         if (!images.length) { status.hidden = true; return; }
-        const missing = images.filter(image => !results.has(image.key));
-        if (!missing.length) {
-            status.hidden = false;
-            status.textContent = `已检索 ${images.length} 张图片的文字`;
-            return;
-        }
-        let done = images.length - missing.length;
+        let done = 0;
         let failed = 0;
         status.hidden = false;
-        for (const image of missing) {
+        for (const image of images) {
             if (!active() || version !== revision || document.hidden) return;
             status.textContent = `正在识别图片文字 ${done} / ${images.length}…`;
             const existed = results.has(image.key);
@@ -309,15 +210,9 @@ export function createImageTextSearch(input, { getImages, onUpdate, isActive = (
     function refresh(event) {
         clearTimeout(timer);
         revision++;
-        const version = revision;
-        void preloadImageTextIndex().then(() => {
-            if (active() && version === revision && !hydrated) {
-                hydrated = true;
-                if (input.value.trim()) onUpdate();
-            }
-        });
         if (event?.isComposing) return;
         if (!input.value.trim()) { status.hidden = true; return; }
+        const version = revision;
         timer = setTimeout(() => { void scan(version); }, 250);
     }
     input.addEventListener('input', refresh);

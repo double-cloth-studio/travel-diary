@@ -1276,11 +1276,7 @@ function createRecordApi(root, options = {}) {
                     if (res.destroyed) onClose();
                     let result;
                     try {
-                        if (mode === 'recycle-bin') {
-                            result = await require('./recycle-bin.js').readRecycleBin(root);
-                            try { result.imageText = await require('./image-text-store.js').createImageTextStore(root).list(true); }
-                            catch { result.imageText = []; /* 缓存故障不阻断回收与恢复。 */ }
-                        }
+                        if (mode === 'recycle-bin') result = await require('./recycle-bin.js').readRecycleBin(root);
                         else if (mode === 'media-health') result = await require('./media-health.js').scanMedia(root);
                         else {
                             const { inventory, readBackupState } = require('./record-inventory.js');
