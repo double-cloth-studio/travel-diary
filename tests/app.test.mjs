@@ -426,6 +426,101 @@ test('原生对话框内的媒体查看器接收切换快捷键，背景对话�
     assert.equal(prevented, 1);
 });
 
+test('播放中的视频在面板、画面和按钮上使用左右键只调整进度', t => {
+    const previous = globalThis.document;
+    const state = { photos: [{ kind: 'video' }, { kind: 'image' }], index: 0 };
+    const navigation = app.stubViewerNavigation(state);
+    const video = { paused: false, ended: false, currentTime: 12, duration: 120 };
+    globalThis.document = {
+        querySelector: selector => selector === '[data-photo-viewer]' ? {} : null,
+        body: { querySelector: selector => selector === '[data-video-viewer-video]' ? video : null }
+    };
+    t.after(() => { globalThis.document = previous; navigation.restore(); });
+    for (const focus of ['', '.video-viewer-controls', '[data-video-viewer-video]', 'button']) {
+        const target = { closest: selector => focus && selector.includes(focus) ? {} : null,
+            matches: () => focus === 'button' };
+        let prevented = 0;
+        app.handleDocumentKeydown({ key: 'ArrowRight', target, preventDefault: () => prevented++ });
+        assert.equal(video.currentTime, 17);
+        app.handleDocumentKeydown({ key: 'ArrowLeft', target, preventDefault: () => prevented++ });
+        assert.equal(video.currentTime, 12);
+        assert.equal(state.index, 0);
+        assert.equal(prevented, 2);
+        assert.deepEqual(navigation.calls, []);
+    }
+    const target = { closest: () => null };
+    video.currentTime = 118;
+    app.handleDocumentKeydown({ key: 'ArrowRight', target, preventDefault() {} });
+    assert.equal(video.currentTime, 120);
+    video.currentTime = 2;
+    app.handleDocumentKeydown({ key: 'ArrowLeft', target, preventDefault() {} });
+    assert.equal(video.currentTime, 0);
+});
+
+test('视频暂停或结束时左右键切换媒体，单项媒体不改变进度', t => {
+    const previous = globalThis.document;
+    const state = { photos: [{ kind: 'video' }, { kind: 'image' }], index: 0 };
+    const navigation = app.stubViewerNavigation(state);
+    const video = { paused: true, ended: false, currentTime: 12, duration: 120 };
+    globalThis.document = {
+        querySelector: selector => selector === '[data-photo-viewer]' ? {} : null,
+        body: { querySelector: selector => selector === '[data-video-viewer-video]' ? video : null }
+    };
+    t.after(() => { globalThis.document = previous; navigation.restore(); });
+    for (const focus of ['', '.video-viewer-controls', '[data-video-viewer-video]', 'button']) {
+        const target = { closest: selector => focus && selector.includes(focus) ? {} : null,
+            matches: () => focus === 'button' };
+        let prevented = 0;
+        app.handleDocumentKeydown({ key: 'ArrowRight', target, preventDefault: () => prevented++ });
+        assert.equal(state.index, 1);
+        app.handleDocumentKeydown({ key: 'ArrowLeft', target, preventDefault: () => prevented++ });
+        assert.equal(state.index, 0);
+        assert.equal(video.currentTime, 12);
+        assert.equal(prevented, 2);
+    }
+    video.paused = false;
+    video.ended = true;
+    const target = { closest: () => null };
+    app.handleDocumentKeydown({ key: 'ArrowRight', target, preventDefault() {} });
+    assert.equal(state.index, 1);
+    state.photos = [{ kind: 'video' }];
+    state.index = 0;
+    navigation.calls.length = 0;
+    app.handleDocumentKeydown({ key: 'ArrowLeft', target, preventDefault() {} });
+    assert.equal(video.currentTime, 12);
+    assert.deepEqual(navigation.calls, []);
+    video.ended = false;
+    app.handleDocumentKeydown({ key: 'ArrowRight', target, preventDefault() {} });
+    assert.equal(video.currentTime, 17);
+});
+
+test('视频方向键保留输入控件、修饰键及已处理事件的行为', t => {
+    const previous = globalThis.document;
+    const state = { photos: [{ kind: 'video' }, { kind: 'image' }], index: 0 };
+    const navigation = app.stubViewerNavigation(state);
+    const video = { paused: false, ended: false, currentTime: 12, duration: 120 };
+    globalThis.document = {
+        querySelector: selector => selector === '[data-photo-viewer]' ? {} : null,
+        body: { querySelector: selector => selector === '[data-video-viewer-video]' ? video : null }
+    };
+    t.after(() => { globalThis.document = previous; navigation.restore(); });
+    for (const paused of [false, true]) {
+        video.paused = paused;
+        const event = { key: 'ArrowRight', target: { closest: () => null },
+            preventDefault() { assert.fail('不应拦截原生键盘行为'); } };
+        for (const control of ['input', 'textarea', 'select', '[role="slider"]', '[role="listbox"]', '[contenteditable]']) {
+            app.handleDocumentKeydown({ ...event,
+                target: { closest: selector => selector.includes(control) ? {} : null } });
+        }
+        for (const flag of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey', 'isComposing', 'defaultPrevented']) {
+            app.handleDocumentKeydown({ ...event, [flag]: true });
+        }
+        assert.equal(state.index, 0);
+        assert.equal(video.currentTime, 12);
+        assert.deepEqual(navigation.calls, []);
+    }
+});
+
 test('日记方向键调用可用的翻页按钮，并保留输入框和修饰键行为', t => {
     const previous = globalThis.document;
     const navigation = app.stubSearchNavigation({ name: 'entry', params: {} });
