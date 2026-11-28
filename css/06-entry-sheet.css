@@ -82,6 +82,13 @@
         rgba(126, 86, 42, 0.06);
 }
 
+/* 仅将桌面有限高度的滚动纸页独立合成，避免重绘整本笔记或合成手机超长纸面。 */
+@media (min-width: 761px) {
+    body[data-route="photos"] .page-spread > .paper-page-right {
+        transform: translateZ(0);
+    }
+}
+
 .photo-sleeve-virtual { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 .photo-sleeve-virtual-content {
     position: relative;
