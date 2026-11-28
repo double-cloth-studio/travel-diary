@@ -1510,7 +1510,7 @@ function renderArchive(params = {}) {
                         <h2 id="archiveMediaTitle">全部媒体</h2>
                         <p>${travelModel.stats.photos} 张图片 · ${travelModel.stats.videos} 个视频</p>
                     </div>
-                    <span>翻页查看 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></span>
+                    <span>查看 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></span>
                 </a>
             </section>
             <div class="archive-country-list">
