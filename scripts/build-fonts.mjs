@@ -35,7 +35,6 @@ function collectProjectText(root, coreOnly) {
             const fullPath = join(directory, entry.name);
             // 缓存及个人内容目录的链接均不参与文字收集。
             if (entry.isSymbolicLink()) continue;
-            if (relative(root, fullPath).replaceAll('\\', '/') === 'assets/ocr') continue;
             if (entry.isDirectory()) {
                 if (!ignored.has(entry.name) && !entry.name.startsWith('.travel-')) collect(fullPath);
             } else if (textExtensions.has(extname(entry.name)) && !basename(entry.name).includes('.test.')) {

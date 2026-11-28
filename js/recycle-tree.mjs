@@ -224,7 +224,6 @@ export function recycleRestoreConflicts(items, currentRecords, selections) {
 export function buildRecycleTree(files, query = '', {
     records = [], mediaReferences = [], displayRecords = [], mediaKind = () => '', groupSingleRecord = false,
     includeEmptyRecords = false, includeEmptyProfile = false, preserveProfileGroup = false,
-    matchesFile = () => false,
     categories = ['正文', '图片', '视频', '个人资料', '日记索引', '其他文件']
 } = {}) {
     const directories = new Map();
@@ -276,7 +275,7 @@ export function buildRecycleTree(files, query = '', {
         const node = ['日记索引', '日记信息'].includes(category) ? parent : directory(parent, `type:${index}`, category, index + 2);
         node.files.push(file);
         if (node !== parent) ancestors.push(node);
-        const matches = Boolean(search && ([file.path, category, ...ancestors.map(ancestor => ancestor.name)].some(value => value.toLowerCase().includes(search)) || matchesFile(file, search)));
+        const matches = Boolean(search && [file.path, category, ...ancestors.map(ancestor => ancestor.name)].some(value => value.toLowerCase().includes(search)));
         for (const ancestor of ancestors) {
             ancestor.count++;
             ancestor.totalBytes += file.size;

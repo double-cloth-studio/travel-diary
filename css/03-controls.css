@@ -1,11 +1,3 @@
-.image-text-status {
-    margin: 6px 0 10px;
-    color: var(--ink-soft);
-    font-size: 12px;
-    line-height: 1.6;
-    overflow-wrap: anywhere;
-}
-
 .archive-page .search-field {
     margin-bottom: 24px;
 }

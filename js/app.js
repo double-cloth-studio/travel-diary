@@ -1,5 +1,4 @@
 import { orderMedia } from './media-order.mjs?v=2.1.154';
-import { createImageTextSearch, recordImages, recordImageTextMatches, imageTextMatches, clearImageTextCache } from './image-text-search.js?v=2.1.154';
 import { createRecycleManager } from './recycle-manager.js?v=2.1.154';
 import { loadTravelData, loadTravelRecords } from './data.js?v=2.1.154';
 import { createRecordEditor } from './record-editor.js?v=2.1.154';
@@ -90,7 +89,6 @@ let pageTurnInterrupt = null;
 let pendingPageTurn = null;
 let lastReadingHash = '#ledger';
 let renderedPageHash = '';
-let pageImageSearch;
 let lastReadingScrollPosition = null;
 let closedBookReadingContext = null;
 let searchRouteTimer = null;
@@ -130,7 +128,6 @@ function getRefreshKey() {
 }
 
 function clearMediaCaches() {
-    clearImageTextCache();
     clearMediaPreviewCache();
     clearOriginalImageCache();
 }
@@ -1280,7 +1277,9 @@ function renderLedger(params = {}, options = {}) {
                 </div>
             </section>
             <div class="timeline-list" id="ledgerList">
-                ${renderLedgerResults(filtered, ledgerParams)}
+                ${filtered.length
+                    ? (ledgerParams.view === 'trips' ? renderLedgerGroups(trips, ledgerParams, renderLedgerTripEntry, '次') : renderLedgerGroups(filtered, ledgerParams))
+                    : (travelModel.records.length ? renderNoResultsState('ledger') : renderEmptyArchiveState())}
             </div>
         </div>
     `, `
@@ -1303,13 +1302,6 @@ function renderLedger(params = {}, options = {}) {
             yearBookmarks.scrollLeft = yearBookmarksScrollLeft;
         }
     }
-}
-
-function renderLedgerResults(filtered, params) {
-    if (!filtered.length) return travelModel.records.length ? renderNoResultsState('ledger') : renderEmptyArchiveState();
-    return params.view === 'trips'
-        ? renderLedgerGroups(getLedgerTrips(filtered), params, renderLedgerTripEntry, '次')
-        : renderLedgerGroups(filtered, params);
 }
 
 function renderLedgerContextPanel(snapshot, resultLabel, ledgerParams) {
@@ -1463,22 +1455,6 @@ function renderLedgerSelect(label, key, options, activeValue, settings = {}) {
     `;
 }
 
-function getArchiveCountries(query) {
-    const matchingImageAreas = new Set(query ? travelModel.records.filter(record => recordImageTextMatches(record, query))
-        .map(record => record.adminAreaKey || `country:${record.countryKey || record.country || '未知国家/地区'}`) : []);
-    return travelModel.countries
-        .map(country => {
-            if (!query) return country;
-            const countryMatch = country.country.toLowerCase().includes(query);
-            const areas = countryMatch
-                ? country.areas
-                : country.areas.filter(area => area.searchText.includes(query)
-                    || matchingImageAreas.has(area.key));
-            return { ...country, areas };
-        })
-        .filter(country => country.areas.length > 0);
-}
-
 function renderArchive(params = {}) {
     const query = (params.q || '').trim().toLowerCase();
     const latest = travelModel.latestRecord;
@@ -1487,7 +1463,16 @@ function renderArchive(params = {}) {
     const topMonth = getTopMonthStat(travelModel.monthStats);
     const leadingAdminArea = travelModel.topAdminAreas[0] || null;
     const broadestAdminArea = getBroadestAdminArea(travelModel.topAdminAreas);
-    const countries = getArchiveCountries(query);
+    const countries = travelModel.countries
+        .map(country => {
+            if (!query) return country;
+            const countryMatch = country.country.toLowerCase().includes(query);
+            const areas = countryMatch
+                ? country.areas
+                : country.areas.filter(area => area.searchText.includes(query));
+            return { ...country, areas };
+        })
+        .filter(country => country.areas.length > 0);
 
     setPages(`
         <div class="archive-page">
@@ -1496,9 +1481,9 @@ function renderArchive(params = {}) {
                 <p class="journal-label">日记归档</p>
                 <p class="page-copy">"I was surprised, as always, by how easy the act of leaving was, and how good it felt. The world was suddenly rich with possibility."</p>
             </header>
-            <label class="field-label" for="archiveSearch">搜索地点、日记内容或图片文字</label>
+            <label class="field-label" for="archiveSearch">搜索国家、一级行政区或目的地</label>
             <div class="ink-field search-field">
-                <input id="archiveSearch" type="search" value="${escapeHtml(params.q || '')}" autocomplete="off" aria-label="搜索地点、日记内容或图片文字" placeholder="地点、日记内容或图片文字">
+                <input id="archiveSearch" type="search" value="${escapeHtml(params.q || '')}" autocomplete="off" aria-label="搜索国家、一级行政区或目的地" placeholder="例如：云南、苏州、北京">
                 <button class="search-clear" type="button" data-action="clear-search" data-target="archive" aria-label="清空地点搜索" ${params.q ? '' : 'disabled'}>×</button>
             </div>
             ${renderMobileContextToggle('打开旅行概览', '查看足迹摘要与统计')}
@@ -2107,7 +2092,7 @@ function renderMediaFilters(total) {
         <div class="media-filter-field">
             <label class="field-label" for="mediaSearch">搜索附件</label>
             <div class="ink-field search-field">
-                <input type="search" id="mediaSearch" name="query" placeholder="文件名、日记标题或图片文字" autocomplete="off" aria-controls="mediaResults">
+                <input type="search" id="mediaSearch" name="query" placeholder="文件名或日记标题" autocomplete="off" aria-controls="mediaResults">
                 <button class="search-clear" type="button" data-action="clear-search" data-target="media" aria-label="清空附件搜索" hidden>×</button>
             </div>
         </div>
@@ -2127,7 +2112,6 @@ function renderMediaResults(media, { groupByRecord = false, emptyMessage = '这�
 }
 
 function bindMediaFilters({ media, groupByRecord }) {
-    const route = activeRoute;
     const form = refs.leftPage.querySelector('[data-media-filters]');
     if (!form) return;
     const results = refs.rightPage.querySelector('#mediaResults');
@@ -2137,15 +2121,15 @@ function bindMediaFilters({ media, groupByRecord }) {
     const clearSearch = form.querySelector('.search-clear');
     let previousQuery = '';
     let previousKind = '';
-    function update(force = false) {
+    function update() {
         const query = input.value.trim().toLowerCase();
         const kind = select.value;
-        if (force !== true && query === previousQuery && kind === previousKind) return;
+        if (query === previousQuery && kind === previousKind) return;
         previousQuery = query;
         previousKind = kind;
         const filtered = Boolean(query || kind);
         const matches = media.filter(item => (!kind || item.kind === kind)
-            && (!query || item.alt.toLowerCase().includes(query) || imageTextMatches(item.src, query)));
+            && (!query || item.alt.toLowerCase().includes(query)));
         disposeMountedPhotoSleeves(results);
         results.innerHTML = renderMediaResults(matches, { groupByRecord, filtered, emptyMessage: '没有符合条件的附件。' });
         refs.rightPage.scrollTop = 0;
@@ -2159,12 +2143,6 @@ function bindMediaFilters({ media, groupByRecord }) {
     });
     input.addEventListener('compositionend', update);
     select.addEventListener('change', update);
-    pageImageSearch = createImageTextSearch(input, {
-        getImages: () => media.filter(item => item.kind === 'image').map(item => ({ key: item.src, url: item.src })),
-        onUpdate: () => update(true),
-        isActive: () => activeRoute === route
-    });
-    pageImageSearch.refresh();
 }
 
 function renderMediaOverview(records) {
@@ -5146,8 +5124,6 @@ function isMobileLayout() {
 }
 
 function setPages(leftHtml, rightHtml, rightPageMode = '', options = {}) {
-    pageImageSearch?.dispose();
-    pageImageSearch = undefined;
     const rightScrollTop = options.preserveRightScroll ? refs.rightPage.scrollTop : 0;
     const keepContextPanelOpen = Boolean(options.keepContextPanelOpen && isMobileContextPanelOpen);
 
@@ -5173,7 +5149,6 @@ function setPages(leftHtml, rightHtml, rightPageMode = '', options = {}) {
     syncMobileContextPanelState();
     mountPhotoSleeves();
     if (options.mediaGallery) bindMediaFilters(options.mediaGallery);
-    bindPageImageSearch();
 
     if (isMobileContextPanelOpen) {
         requestAnimationFrame(() => {
@@ -5181,35 +5156,6 @@ function setPages(leftHtml, rightHtml, rightPageMode = '', options = {}) {
             refs.rightPage?.focus({ preventScroll: true });
         });
     }
-}
-
-function bindPageImageSearch() {
-    const input = refs.leftPage.querySelector('#ledgerSearch, #archiveSearch');
-    if (!input) return;
-    const route = activeRoute;
-    pageImageSearch = createImageTextSearch(input, {
-        getImages: () => travelModel.records.flatMap(record => recordImages(record)),
-        isActive: () => activeRoute === route,
-        onUpdate: () => {
-            if (input.value.trim() !== (activeRoute.params.q || '').trim()) return;
-            if (activeRoute.name === 'ledger') {
-                const params = normalizeLedgerParams(activeRoute.params);
-                const filtered = getLedgerRecords(params);
-                refs.leftPage.querySelector('#ledgerList').innerHTML = renderLedgerResults(filtered, params);
-                const trips = params.view === 'trips' ? getLedgerTrips(filtered) : [];
-                const snapshot = buildRecordSetSnapshot(params.view === 'trips' ? trips.flatMap(trip => trip.tripRecords) : filtered);
-                const label = params.view === 'trips'
-                    ? `${hasActiveLedgerFilter(params) ? '匹配行程' : '全部行程'} · ${trips.length} 次`
-                    : createLedgerResultLabel(filtered.length, params);
-                refs.rightPage.querySelector('.index-dashboard').outerHTML = renderLedgerSnapshot(snapshot, label);
-            } else {
-                const countries = getArchiveCountries(input.value.trim().toLowerCase());
-                refs.leftPage.querySelector('.archive-country-list').innerHTML = countries.length
-                    ? countries.map(renderCountryFolder).join('') : renderNoResultsState('archive');
-            }
-        }
-    });
-    pageImageSearch.refresh();
 }
 
 function disposeMountedPhotoSleeves(...containers) {
@@ -5255,7 +5201,7 @@ function getLedgerRecords(params) {
         const hasNote = hasRecordNoteContent(record);
         const noteMatch = normalized.note.length === 0
             || normalized.note.some(value => value === 'filled' ? hasNote : !hasNote);
-        const searchMatch = !query || record.searchText.includes(query) || recordImageTextMatches(record, query);
+        const searchMatch = !query || record.searchText.includes(query);
         return yearMatch && monthMatch && countryMatch && adminAreaMatch && localityMatch && visitMatch && mediaMatch && noteMatch && searchMatch;
     });
 
@@ -5310,7 +5256,7 @@ function renderLedgerControls(params, inputId) {
         <div class="ledger-controls">
             <label class="field-label" for="${inputId}">搜索路线</label>
             <div class="ink-field search-field">
-                <input id="${inputId}" type="search" value="${escapeHtml(params.q)}" autocomplete="off" aria-label="搜索地点、日记内容或图片文字" placeholder="地点、日记内容或图片文字">
+                <input id="${inputId}" type="search" value="${escapeHtml(params.q)}" autocomplete="off" aria-label="搜索国家、行政区、目的地或日记内容" placeholder="搜索地点或日记内容">
                 ${params.q ? '<button class="search-clear" type="button" data-action="clear-search" data-target="ledger" aria-label="清空路线搜索">×</button>' : ''}
             </div>
             <button class="paper-button ledger-filter-trigger" id="ledgerFilterButton" type="button" data-action="show-ledger-filters" aria-controls="ledgerFilters" aria-label="${filterLabel}">

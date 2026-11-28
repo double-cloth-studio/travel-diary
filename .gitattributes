@@ -1,5 +1,1 @@
 *.sh text eol=lf
-
-# OCR 的第三方分发文件按原始字节校验，禁止检出时转换换行。
-assets/ocr/*.js binary
-assets/ocr/*.txt -text whitespace=-blank-at-eof

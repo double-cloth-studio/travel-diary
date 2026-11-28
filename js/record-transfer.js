@@ -12,9 +12,7 @@ import { createContentPreviewScope } from './content-preview.js?v=2.1.154';
 import { confirmFeedback } from './feedback-dialog.js?v=2.1.154';
 
 import { renderRecordDifference, loadDifferenceMedia } from './record-diff-view.js?v=2.1.154';
-import { createImageTextSearch, imageSource, recordImages, recordImageTextMatches } from './image-text-search.js?v=2.1.154';
 
-let archiveSequence = 0;
 
 export function createRecordTransfer(onImported, getRecords, { isDeleteActive = () => true, onDeleteClose = () => {}, onExportClose = () => {} } = {}) {
     const dialog = document.createElement('dialog');
@@ -23,7 +21,7 @@ export function createRecordTransfer(onImported, getRecords, { isDeleteActive = 
     dialog.innerHTML = `
         <div class="record-transfer-card">
             <header class="management-heading"><div><h2 id="recordTransferTitle"></h2><p data-record-transfer-note></p></div><button class="paper-button management-secondary" type="button" data-record-transfer-cancel>关闭</button></header>
-            <label class="field-label" for="recordTransferSearch">搜索日期、地点、文件名或图片文字</label>
+            <label class="field-label" for="recordTransferSearch">搜索日期、地点或文件名</label>
             <div class="management-search"><input id="recordTransferSearch" type="search" autocomplete="off" placeholder="筛选要备份的日记"><button class="media-text-button" type="button" data-record-transfer-reset hidden>清除搜索</button></div>
             <div class="record-transfer-toolbar">
                 <button class="paper-button management-secondary" type="button" data-record-transfer-all>全选筛选结果</button>
@@ -60,13 +58,6 @@ export function createRecordTransfer(onImported, getRecords, { isDeleteActive = 
     let listScrollTop = 0;
     let dialogScrollTop = 0;
     let previews = createContentPreviewScope();
-    let archiveImages = new Map();
-    const resolveImage = name => mode === 'import' ? archiveImages.get(name) || { key: `missing:${name}` } : imageSource(name);
-    const imageSearch = createImageTextSearch(dialog.querySelector('input[type="search"]'), {
-        getImages: () => records.flatMap(record => recordImages(record, resolveImage)).filter(image => image.url || image.source != null),
-        onUpdate: () => { if (!busy) render(); },
-        isActive: () => dialog.open && !busy
-    });
     const status = message => {
         const output = document.querySelector('[data-data-transfer-status]');
         if (output) output.textContent = message;
@@ -92,13 +83,12 @@ export function createRecordTransfer(onImported, getRecords, { isDeleteActive = 
             control.disabled = value || (control.type === 'checkbox' && mode === 'import' && comparisons.get(control.value)?.status === 'conflict');
         });
         updateSelection();
-        if (!value) imageSearch.refresh();
     }
 
     function filteredRecords() {
         const query = dialog.querySelector('input[type="search"]').value.trim().toLowerCase();
         return records.filter(record => [record.date, record.descTitle, record.country, record.admin_area, record.locality, record.desc_md]
-            .some(value => String(value || '').toLowerCase().includes(query)) || recordImageTextMatches(record, query, resolveImage));
+            .some(value => String(value || '').toLowerCase().includes(query)));
     }
 
     function render() {
@@ -152,8 +142,6 @@ export function createRecordTransfer(onImported, getRecords, { isDeleteActive = 
 
     function open(nextMode, nextRecords) {
         mode = nextMode;
-        const archiveId = ++archiveSequence;
-        archiveImages = new Map(mode === 'import' ? (entries || []).map(entry => [entry.name, { key: `backup:${archiveId}:${entry.name}`, source: entry.data }]) : []);
         selectionSuspended = false;
         returnFocus = undefined;
         dialog.classList.toggle('record-transfer-import', mode === 'import');
@@ -172,7 +160,6 @@ export function createRecordTransfer(onImported, getRecords, { isDeleteActive = 
         error('');
         render();
         dialog.showModal();
-        imageSearch.refresh();
         dialog.querySelector('input[type="search"]').focus();
     }
 
@@ -390,7 +377,6 @@ export function createRecordTransfer(onImported, getRecords, { isDeleteActive = 
     function resumeSelection() {
         selectionSuspended = false;
         dialog.showModal();
-        imageSearch.refresh();
         returnFocus?.focus({ preventScroll: true });
         dialog.querySelector('[data-record-transfer-list]').scrollTop = listScrollTop;
         dialog.scrollTop = dialogScrollTop;
@@ -454,7 +440,7 @@ export function createRecordTransfer(onImported, getRecords, { isDeleteActive = 
             return;
         }
         if (event.target.closest('[data-record-transfer-cancel]')) { importAuthorization = undefined; close(); }
-        if (event.target.closest('[data-record-transfer-reset]')) { dialog.querySelector('input[type="search"]').value = ''; imageSearch.refresh(); render(); dialog.querySelector('input[type="search"]').focus(); }
+        if (event.target.closest('[data-record-transfer-reset]')) { dialog.querySelector('input[type="search"]').value = ''; render(); dialog.querySelector('input[type="search"]').focus(); }
         if (event.target.closest('[data-record-transfer-all]')) { filteredRecords().filter(record => mode !== 'import' || comparisons.get(record.desc_md)?.status !== 'conflict').forEach(record => selected.add(record.desc_md)); render(); }
         if (event.target.closest('[data-record-transfer-clear]')) { selected.clear(); render(); }
         if (event.target.closest('[data-record-transfer-changes]')) {
