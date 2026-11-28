@@ -1,12 +1,12 @@
-import { escapeHtml, getMediaFileUrl, formatFileSize } from './utils.js?v=2.1.149';
-import { createPasswordGate } from './record-password.js?v=2.1.149';
-import { detectWriterCapability } from './writer-capability.js?v=2.1.149';
-import { confirmFeedback } from './feedback-dialog.js?v=2.1.149';
-import { createContentPreviewScope, mediaKind } from './content-preview.js?v=2.1.149';
-import { enhanceCustomSelects } from './custom-select.js?v=2.1.149';
-import { renderRecordDifference, loadDifferenceMedia } from './record-diff-view.js?v=2.1.149';
-import { recordIdentity } from './record-identity.mjs?v=2.1.149';
-import { buildRecycleTree, buildRestorePreviewTree, groupRecycleItems, recycleRestoreConflicts, recycleRecordLabel, recycleFileType, recycleSelectionGroups, selectRecycleParts } from './recycle-tree.mjs?v=2.1.149';
+import { escapeHtml, getMediaFileUrl, formatFileSize } from './utils.js?v=2.1.150';
+import { createPasswordGate } from './record-password.js?v=2.1.150';
+import { detectWriterCapability } from './writer-capability.js?v=2.1.150';
+import { confirmFeedback } from './feedback-dialog.js?v=2.1.150';
+import { createContentPreviewScope, mediaKind } from './content-preview.js?v=2.1.150';
+import { enhanceCustomSelects } from './custom-select.js?v=2.1.150';
+import { renderRecordDifference, loadDifferenceMedia } from './record-diff-view.js?v=2.1.150';
+import { recordIdentity } from './record-identity.mjs?v=2.1.150';
+import { buildRecycleTree, buildRestorePreviewTree, groupRecycleItems, recycleRestoreConflicts, recycleRecordLabel, recycleFileType, recycleSelectionGroups, selectRecycleParts } from './recycle-tree.mjs?v=2.1.150';
 
 function restoreChangeTitle(record, comparison) {
     const diary = record.date ? record : comparison.previous?.date ? comparison.previous : null;

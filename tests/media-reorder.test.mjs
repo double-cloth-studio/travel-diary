@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadBrowserModule } from './helpers/browser-modules.mjs';
 
-const { moveMediaGroup, selectedMediaGroups } = await loadBrowserModule(new URL('../js/record-editor.js', import.meta.url), '\nexport { moveMediaGroup, selectedMediaGroups };');
+const { moveMediaGroup, selectedMediaGroups, mediaDragKeys } = await loadBrowserModule(new URL('../js/record-editor.js', import.meta.url), '\nexport { moveMediaGroup, selectedMediaGroups, mediaDragKeys };');
 
 test('拖动手柄只合并连续选中的附件，保留未选附件之间的间隔', () => {
     const order = ['photo:1', 'video:1', 'upload:1', 'photo:2', 'video:2', 'photo:3'];
@@ -24,9 +24,15 @@ test('单项可以拖到首位、末位和中间', () => {
     assert.deepEqual(order, ['a', 'b', 'c', 'd']);
 });
 
-test('不连续多选合并拖动，保留组内和未选文件的相对顺序', () => {
-    assert.deepEqual(moveMediaGroup(['a', 'b', 'c', 'd', 'e'], new Set(['d', 'b']), 'a'), ['b', 'd', 'a', 'c', 'e']);
-    assert.deepEqual(moveMediaGroup(['a', 'b', 'c', 'd', 'e'], new Set(['d', 'b'])), ['a', 'c', 'e', 'b', 'd']);
+test('间隔选中时单项手柄仅移动自身，连续组手柄仅移动所属组', () => {
+    const order = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const selected = new Set(['a', 'b', 'd', 'f']);
+    assert.deepEqual([...mediaDragKeys(order, selected, 'a')], ['a', 'b']);
+    assert.deepEqual([...mediaDragKeys(order, selected, 'b')], ['a', 'b']);
+    assert.deepEqual(moveMediaGroup(order, mediaDragKeys(order, selected, 'a'), 'e'), ['c', 'd', 'a', 'b', 'e', 'f']);
+    assert.deepEqual(moveMediaGroup(order, mediaDragKeys(order, selected, 'd'), 'a'), ['d', 'a', 'b', 'c', 'e', 'f']);
+    assert.deepEqual(moveMediaGroup(order, mediaDragKeys(order, selected, 'c')), ['a', 'b', 'd', 'e', 'f', 'c']);
+    assert.deepEqual([...selected], ['a', 'b', 'd', 'f']);
 });
 
 test('混合已有、新增及跨类型选择只移动当前列表中的文件', () => {

@@ -1,7 +1,7 @@
-import { createMediaPreview, saveMediaPreview } from './media-preview.mjs?v=2.1.149';
-import { escapeHtml, getMediaFileUrl } from './utils.js?v=2.1.149';
-import { createMediaFileLink, mediaOrderIcon } from './media-file-link.js?v=2.1.149';
-import { highlightMarkdown, splitMarkdown, previewHtml, previewToMarkdown } from './markdown-editor.js?v=2.1.149';
+import { createMediaPreview, saveMediaPreview } from './media-preview.mjs?v=2.1.150';
+import { escapeHtml, getMediaFileUrl } from './utils.js?v=2.1.150';
+import { createMediaFileLink, mediaOrderIcon } from './media-file-link.js?v=2.1.150';
+import { highlightMarkdown, splitMarkdown, previewHtml, previewToMarkdown } from './markdown-editor.js?v=2.1.150';
 import {
     MAXIMUM_IMAGE_FILE_BYTES,
     MAXIMUM_MEDIA_BATCH_BYTES,
@@ -10,18 +10,18 @@ import {
     mediaBytes,
     readUploads,
     sameMediaContent
-} from './photo-uploads.mjs?v=2.1.149';
-import { DRAFT_FORMAT, RECORD_FIELDS, buildMarkdown, defaultMarkdownPath, prepareRecord, readDraft, recordSlug } from './record-input.mjs?v=2.1.149';
-import { getRecordAutofill, getRecordOptions, suggestedMarkdownPath, suggestedTripId } from './record-suggestions.mjs?v=2.1.149';
-import { createDraftBlob, readRecordSource } from './draft-archive.mjs?v=2.1.149';
-import { fetchMediaTime, readMediaTime, sortMediaByTime } from './media-time.mjs?v=2.1.149';
-import { orderMedia } from './media-order.mjs?v=2.1.149';
-import { detectWriterCapability } from './writer-capability.js?v=2.1.149';
-import { enhanceCustomSelects } from './custom-select.js?v=2.1.149';
-import { confirmFeedback, showFeedback } from './feedback-dialog.js?v=2.1.149';
+} from './photo-uploads.mjs?v=2.1.150';
+import { DRAFT_FORMAT, RECORD_FIELDS, buildMarkdown, defaultMarkdownPath, prepareRecord, readDraft, recordSlug } from './record-input.mjs?v=2.1.150';
+import { getRecordAutofill, getRecordOptions, suggestedMarkdownPath, suggestedTripId } from './record-suggestions.mjs?v=2.1.150';
+import { createDraftBlob, readRecordSource } from './draft-archive.mjs?v=2.1.150';
+import { fetchMediaTime, readMediaTime, sortMediaByTime } from './media-time.mjs?v=2.1.150';
+import { orderMedia } from './media-order.mjs?v=2.1.150';
+import { detectWriterCapability } from './writer-capability.js?v=2.1.150';
+import { enhanceCustomSelects } from './custom-select.js?v=2.1.150';
+import { confirmFeedback, showFeedback } from './feedback-dialog.js?v=2.1.150';
 import { ByteSource, sourceOf } from './zip-stream.mjs';
-import { MAXIMUM_JSON_DRAFT_BYTES, MAXIMUM_RECORD_ARCHIVE_BYTES } from './file-limits.mjs?v=2.1.149';
-import { createOperationProgress, saveBlobDownload, uploadWithProgress } from './operation-progress.js?v=2.1.149';
+import { MAXIMUM_JSON_DRAFT_BYTES, MAXIMUM_RECORD_ARCHIVE_BYTES } from './file-limits.mjs?v=2.1.150';
+import { createOperationProgress, saveBlobDownload, uploadWithProgress } from './operation-progress.js?v=2.1.150';
 
 const POINTER_MOVE_TOLERANCE = 8;
 const PHOTO_PREVIEW_WIDTH = 320;
@@ -50,6 +50,10 @@ function selectedMediaGroups(order, keys) {
         group.push(key);
     }
     return groups;
+}
+
+function mediaDragKeys(order, selected, key) {
+    return new Set(selectedMediaGroups(order, selected).find(group => group.includes(key)) ?? [key]);
 }
 
 function mediaDragIcon() {
@@ -562,7 +566,6 @@ export function createRecordEditor(onSaved, getRecords = () => []) {
         for (const key of selectedMedia) if (!itemsByKey.has(key)) selectedMedia.delete(key);
         const groups = selectedMediaGroups(items.map(item => item.key), selectedMedia);
         const groupsByKey = new Map(groups.flatMap(group => group.map(key => [key, group])));
-        const canDragGroup = selectedMedia.size > 1;
         dialog.querySelectorAll('[data-media-select]').forEach(checkbox => {
             const key = checkbox.dataset.mediaSelect;
             const row = checkbox.closest('li');
@@ -578,11 +581,11 @@ export function createRecordEditor(onSaved, getRecords = () => []) {
             if (joined && !handle.hidden) handle.dataset.mediaDragEnd = group.at(-1);
             else delete handle.dataset.mediaDragEnd;
             if (!joined || handle.hidden) handle.style.removeProperty('height');
-            const dragsGroup = canDragGroup && checkbox.checked;
+            const dragsGroup = joined;
             handle.toggleAttribute('data-media-drag-group', dragsGroup);
             const name = itemsByKey.get(key).name;
-            handle.setAttribute('aria-label', dragsGroup ? `从 ${name} 拖动所选 ${selectedMedia.size} 项排序` : `拖动 ${name} 排序`);
-            handle.title = dragsGroup ? '上下拖动所选文件；也可用方向键调整' : '上下拖动排序；也可用方向键调整';
+            handle.setAttribute('aria-label', dragsGroup ? `从 ${name} 拖动连续选中的 ${group.length} 项排序` : `拖动 ${name} 排序`);
+            handle.title = dragsGroup ? '上下拖动此组文件；也可用方向键调整' : '上下拖动排序；也可用方向键调整';
         });
         updateMediaHandleSizes();
         dialog.querySelector('[data-editor-media-batch]').hidden = saved || !items.length;
@@ -1260,7 +1263,7 @@ export function createRecordEditor(onSaved, getRecords = () => []) {
         if (dragHandle && !saved && !busy && !readingPhotos && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
             event.preventDefault();
             const key = dragHandle.closest('[data-media-key]').dataset.mediaKey;
-            const keys = dragHandle.hasAttribute('data-media-drag-group') ? new Set(selectedMedia) : new Set([key]);
+            const keys = mediaDragKeys(orderedMedia().map(item => item.key), selectedMedia, key);
             operateMedia(keys, event.key === 'ArrowUp' ? 'previous' : 'next');
             const focus = mediaHandleFor(key);
             focus?.closest('li').scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -1348,7 +1351,7 @@ export function createRecordEditor(onSaved, getRecords = () => []) {
             window.getSelection()?.removeAllRanges();
             dialog.classList.add('is-media-dragging');
             const key = handle.closest('[data-media-key]').dataset.mediaKey;
-            const keys = handle.hasAttribute('data-media-drag-group') ? new Set(selectedMedia) : new Set([key]);
+            const keys = mediaDragKeys(orderedMedia().map(item => item.key), selectedMedia, key);
             mediaDrag = { id: event.pointerId, x: event.clientX, y: event.clientY, startY: event.clientY,
                 key, keys, active: false, targets: new Map() };
             handle.focus({ preventScroll: true });
