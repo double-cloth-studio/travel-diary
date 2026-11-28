@@ -2,7 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadBrowserModule } from './helpers/browser-modules.mjs';
 
-const { moveMediaGroup } = await loadBrowserModule(new URL('../js/record-editor.js', import.meta.url), '\nexport { moveMediaGroup };');
+const { moveMediaGroup, selectedMediaGroups } = await loadBrowserModule(new URL('../js/record-editor.js', import.meta.url), '\nexport { moveMediaGroup, selectedMediaGroups };');
+
+test('拖动手柄只合并连续选中的附件，保留未选附件之间的间隔', () => {
+    const order = ['photo:1', 'video:1', 'upload:1', 'photo:2', 'video:2', 'photo:3'];
+    assert.deepEqual(selectedMediaGroups(order, new Set(['video:2', 'photo:2', 'video:1', 'photo:1', 'photo:3'])), [
+        ['photo:1', 'video:1'], ['photo:2', 'video:2', 'photo:3']
+    ]);
+    assert.deepEqual(selectedMediaGroups(order, new Set(['photo:1', 'upload:1', 'video:2'])), [
+        ['photo:1'], ['upload:1'], ['video:2']
+    ]);
+    assert.deepEqual(selectedMediaGroups(order, new Set(order)), [order]);
+    assert.deepEqual(selectedMediaGroups(order, new Set(['missing'])), []);
+});
 
 test('单项可以拖到首位、末位和中间', () => {
     const order = ['a', 'b', 'c', 'd'];

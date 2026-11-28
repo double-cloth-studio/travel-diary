@@ -1,7 +1,7 @@
-import { createMediaPreview, saveMediaPreview } from './media-preview.mjs?v=2.1.148';
-import { escapeHtml, getMediaFileUrl } from './utils.js?v=2.1.148';
-import { createMediaFileLink, mediaOrderIcon } from './media-file-link.js?v=2.1.148';
-import { highlightMarkdown, splitMarkdown, previewHtml, previewToMarkdown } from './markdown-editor.js?v=2.1.148';
+import { createMediaPreview, saveMediaPreview } from './media-preview.mjs?v=2.1.149';
+import { escapeHtml, getMediaFileUrl } from './utils.js?v=2.1.149';
+import { createMediaFileLink, mediaOrderIcon } from './media-file-link.js?v=2.1.149';
+import { highlightMarkdown, splitMarkdown, previewHtml, previewToMarkdown } from './markdown-editor.js?v=2.1.149';
 import {
     MAXIMUM_IMAGE_FILE_BYTES,
     MAXIMUM_MEDIA_BATCH_BYTES,
@@ -10,18 +10,18 @@ import {
     mediaBytes,
     readUploads,
     sameMediaContent
-} from './photo-uploads.mjs?v=2.1.148';
-import { DRAFT_FORMAT, RECORD_FIELDS, buildMarkdown, defaultMarkdownPath, prepareRecord, readDraft, recordSlug } from './record-input.mjs?v=2.1.148';
-import { getRecordAutofill, getRecordOptions, suggestedMarkdownPath, suggestedTripId } from './record-suggestions.mjs?v=2.1.148';
-import { createDraftBlob, readRecordSource } from './draft-archive.mjs?v=2.1.148';
-import { fetchMediaTime, readMediaTime, sortMediaByTime } from './media-time.mjs?v=2.1.148';
-import { orderMedia } from './media-order.mjs?v=2.1.148';
-import { detectWriterCapability } from './writer-capability.js?v=2.1.148';
-import { enhanceCustomSelects } from './custom-select.js?v=2.1.148';
-import { confirmFeedback, showFeedback } from './feedback-dialog.js?v=2.1.148';
+} from './photo-uploads.mjs?v=2.1.149';
+import { DRAFT_FORMAT, RECORD_FIELDS, buildMarkdown, defaultMarkdownPath, prepareRecord, readDraft, recordSlug } from './record-input.mjs?v=2.1.149';
+import { getRecordAutofill, getRecordOptions, suggestedMarkdownPath, suggestedTripId } from './record-suggestions.mjs?v=2.1.149';
+import { createDraftBlob, readRecordSource } from './draft-archive.mjs?v=2.1.149';
+import { fetchMediaTime, readMediaTime, sortMediaByTime } from './media-time.mjs?v=2.1.149';
+import { orderMedia } from './media-order.mjs?v=2.1.149';
+import { detectWriterCapability } from './writer-capability.js?v=2.1.149';
+import { enhanceCustomSelects } from './custom-select.js?v=2.1.149';
+import { confirmFeedback, showFeedback } from './feedback-dialog.js?v=2.1.149';
 import { ByteSource, sourceOf } from './zip-stream.mjs';
-import { MAXIMUM_JSON_DRAFT_BYTES, MAXIMUM_RECORD_ARCHIVE_BYTES } from './file-limits.mjs?v=2.1.148';
-import { createOperationProgress, saveBlobDownload, uploadWithProgress } from './operation-progress.js?v=2.1.148';
+import { MAXIMUM_JSON_DRAFT_BYTES, MAXIMUM_RECORD_ARCHIVE_BYTES } from './file-limits.mjs?v=2.1.149';
+import { createOperationProgress, saveBlobDownload, uploadWithProgress } from './operation-progress.js?v=2.1.149';
 
 const POINTER_MOVE_TOLERANCE = 8;
 const PHOTO_PREVIEW_WIDTH = 320;
@@ -41,6 +41,17 @@ function moveMediaGroup(order, keys, beforeKey = null) {
     return [...remaining.slice(0, index), ...moving, ...remaining.slice(index)];
 }
 
+function selectedMediaGroups(order, keys) {
+    const groups = [];
+    let group;
+    for (const key of order) {
+        if (!keys.has(key)) { group = null; continue; }
+        if (!group) groups.push(group = []);
+        group.push(key);
+    }
+    return groups;
+}
+
 function mediaDragIcon() {
     return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>';
 }
@@ -52,6 +63,7 @@ export function createRecordEditor(onSaved, getRecords = () => []) {
     dialog.className = 'record-editor entry-sheet';
     dialog.setAttribute('aria-labelledby', editorId('Title'));
     document.body.append(dialog);
+    const mediaHandleObserver = new ResizeObserver(updateMediaHandleSizes);
     let countries = [];
     let chinaLocations = {};
     let token = '';
@@ -538,6 +550,8 @@ export function createRecordEditor(onSaved, getRecords = () => []) {
             return row;
         });
         list.replaceChildren(...rows);
+        mediaHandleObserver.disconnect();
+        rows.forEach(row => mediaHandleObserver.observe(row));
         updateMediaSelection();
         renderRemovedMedia();
     }
@@ -546,7 +560,9 @@ export function createRecordEditor(onSaved, getRecords = () => []) {
         const items = orderedMedia();
         const itemsByKey = new Map(items.map(item => [item.key, item]));
         for (const key of selectedMedia) if (!itemsByKey.has(key)) selectedMedia.delete(key);
-        const canDragGroup = selectedMedia.size > 1 && selectedMedia.size < items.length;
+        const groups = selectedMediaGroups(items.map(item => item.key), selectedMedia);
+        const groupsByKey = new Map(groups.flatMap(group => group.map(key => [key, group])));
+        const canDragGroup = selectedMedia.size > 1;
         dialog.querySelectorAll('[data-media-select]').forEach(checkbox => {
             const key = checkbox.dataset.mediaSelect;
             const row = checkbox.closest('li');
@@ -554,12 +570,21 @@ export function createRecordEditor(onSaved, getRecords = () => []) {
             checkbox.checked = selectedMedia.has(key);
             checkbox.disabled = saved;
             row.classList.toggle('is-selected', checkbox.checked);
+            const group = groupsByKey.get(key);
+            const joined = group?.length > 1;
+            row.dataset.mediaDragStart = group?.[0] ?? key;
+            handle.hidden = joined && group[0] !== key;
+            handle.disabled = saved || items.length < 2 || (checkbox.checked && selectedMedia.size === items.length);
+            if (joined && !handle.hidden) handle.dataset.mediaDragEnd = group.at(-1);
+            else delete handle.dataset.mediaDragEnd;
+            if (!joined || handle.hidden) handle.style.removeProperty('height');
             const dragsGroup = canDragGroup && checkbox.checked;
             handle.toggleAttribute('data-media-drag-group', dragsGroup);
             const name = itemsByKey.get(key).name;
             handle.setAttribute('aria-label', dragsGroup ? `从 ${name} 拖动所选 ${selectedMedia.size} 项排序` : `拖动 ${name} 排序`);
             handle.title = dragsGroup ? '上下拖动所选文件；也可用方向键调整' : '上下拖动排序；也可用方向键调整';
         });
+        updateMediaHandleSizes();
         dialog.querySelector('[data-editor-media-batch]').hidden = saved || !items.length;
         dialog.querySelector('[data-media-sort-time]').disabled = saved || items.length < 2;
         const allSelected = items.length > 0 && selectedMedia.size === items.length;
@@ -582,6 +607,20 @@ export function createRecordEditor(onSaved, getRecords = () => []) {
                 && items[index + (action === 'previous' ? -1 : 1)]
                 && !selectedMedia.has(items[index + (action === 'previous' ? -1 : 1)].key)));
         });
+    }
+
+    function updateMediaHandleSizes() {
+        const rows = new Map([...dialog.querySelectorAll('[data-media-key]')].map(row => [row.dataset.mediaKey, row]));
+        dialog.querySelectorAll('[data-media-drag-end]').forEach(handle => {
+            const first = handle.closest('li').getBoundingClientRect();
+            const last = rows.get(handle.dataset.mediaDragEnd)?.getBoundingClientRect();
+            if (last) handle.style.height = `${last.bottom - first.top}px`;
+        });
+    }
+
+    function mediaHandleFor(key) {
+        const row = dialog.querySelector(`[data-media-key="${CSS.escape(key)}"]`);
+        return row && dialog.querySelector(`[data-media-key="${CSS.escape(row.dataset.mediaDragStart)}"] [data-media-drag]`);
     }
 
     function updateMediaDragTarget() {
@@ -657,7 +696,7 @@ export function createRecordEditor(onSaved, getRecords = () => []) {
             dialog.querySelector('[data-editor-media-announcement]').textContent = changed
                 ? `已调整 ${drag.keys.size} 项的顺序，保存后生效。` : '顺序未更改。';
         }
-        const focus = dialog.querySelector(`[data-media-key="${CSS.escape(drag.key)}"] [data-media-drag]`);
+        const focus = mediaHandleFor(drag.key);
         focus?.focus({ preventScroll: true });
     }
 
@@ -1223,7 +1262,7 @@ export function createRecordEditor(onSaved, getRecords = () => []) {
             const key = dragHandle.closest('[data-media-key]').dataset.mediaKey;
             const keys = dragHandle.hasAttribute('data-media-drag-group') ? new Set(selectedMedia) : new Set([key]);
             operateMedia(keys, event.key === 'ArrowUp' ? 'previous' : 'next');
-            const focus = dialog.querySelector(`[data-media-key="${CSS.escape(key)}"] [data-media-drag]`);
+            const focus = mediaHandleFor(key);
             focus?.closest('li').scrollIntoView({ block: 'nearest', inline: 'nearest' });
             focus?.focus({ preventScroll: true });
         }

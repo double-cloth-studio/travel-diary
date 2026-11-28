@@ -1458,6 +1458,9 @@ a.media-file-link:hover .media-file-name { text-decoration: underline; text-unde
 .record-editor [data-editor-existing-group] > [data-media-viewer-group] { position: relative; padding-right: 56px; }
 .record-editor-existing-media .media-file-actions { position: relative; }
 .record-editor [data-media-drag] { position: absolute; right: -56px; top: 50%; transform: translateY(-50%); }
+.record-editor-existing-media > li { position: relative; }
+.record-editor-existing-media > li:has([data-media-drag-end]) .media-file-actions { position: static; }
+.record-editor [data-media-drag-end] { top: 0; transform: none; }
 .record-editor [data-media-drag-group] { color: var(--stamp); border-color: currentColor; }
 .record-editor .media-file-drag svg { flex-shrink: 0; width: 20px; height: 20px; fill: currentColor; stroke: none; }
 .record-editor .media-file-drag[hidden] { display: none; }
