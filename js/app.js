@@ -549,6 +549,8 @@ function parseRoute(hash = window.location.hash) {
                     id: params.get('id') || ''
                 } : params.has('trip') ? {
                     trip: params.get('trip') || ''
+                } : params.get('all') === '1' ? {
+                    all: true
                 } : {
                     country: params.get('country') || '',
                     area: params.get('area') || params.get('province') || '',
@@ -607,6 +609,7 @@ function serializeRoute(route) {
         case 'photos':
             if (route.params.id) params.set('id', route.params.id);
             else if (route.params.trip) params.set('trip', route.params.trip);
+            else if (route.params.all) params.set('all', '1');
             else {
                 if (route.params.country) params.set('country', route.params.country);
                 if (route.params.area) params.set('area', route.params.area);
@@ -1501,6 +1504,15 @@ function renderArchive(params = {}) {
                 <button class="search-clear" type="button" data-action="clear-search" data-target="archive" aria-label="清空地点搜索" ${params.q ? '' : 'disabled'}>×</button>
             </div>
             ${renderMobileContextToggle('打开旅行概览', '查看足迹摘要与统计')}
+            <section class="archive-media-section" aria-labelledby="archiveMediaTitle">
+                <a class="archive-media-link" href="#photos?all=1">
+                    <div>
+                        <h2 id="archiveMediaTitle">全部媒体</h2>
+                        <p>${travelModel.stats.photos} 张图片 · ${travelModel.stats.videos} 个视频</p>
+                    </div>
+                    <span>翻页查看 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></span>
+                </a>
+            </section>
             <div class="archive-country-list">
                 ${countries.length
                     ? countries.map(renderCountryFolder).join('')
@@ -2020,7 +2032,7 @@ function renderEntryNeighbor(record, direction, label) {
 }
 
 function renderEntryPhotosRoute(params = {}) {
-    if (!params.id && (params.trip || params.country || params.area || params.locality)) {
+    if (!params.id && (params.all || params.trip || params.country || params.area || params.locality)) {
         renderGroupedPhotosRoute(params);
         return;
     }
@@ -2062,18 +2074,21 @@ function renderEntryPhotosRoute(params = {}) {
 }
 
 function renderGroupedPhotosRoute(params = {}) {
-    const matching = params.trip ? getTripRecords(params.trip) : getPlaceRecords(params);
+    const matching = params.all ? travelModel.recordsDesc : (params.trip ? getTripRecords(params.trip) : getPlaceRecords(params));
     const media = matching.flatMap(record => getRecordMedia(record).map(item => ({
         ...item, recordId: record.id, recordDate: record.date, recordTitle: record.title
     })));
-    const label = params.trip ? (matching.length ? `行程 ${matching[0].tripGroupLabel}` : '没有找到这次行程') : getPlaceLabel(params, matching);
+    const label = params.all ? '全部媒体' : (params.trip ? (matching.length ? `行程 ${matching[0].tripGroupLabel}` : '没有找到这次行程') : getPlaceLabel(params, matching));
     const photoCount = media.filter(item => item.kind === 'image').length;
-    const emptyMessage = `${params.trip ? '这次行程' : '这个地点'}还没有图片或视频附件。`;
+    const emptyMessage = `${params.all ? '日记中' : (params.trip ? '这次行程' : '这个地点')}还没有图片或视频附件。`;
+    const returnRoute = params.all ? { name: 'archive', params: {} }
+        : (params.trip ? { name: 'trip', params: { id: params.trip } } : { name: 'place', params });
+    const returnLabel = params.all ? '返回日记归档' : (params.trip ? '返回行程详情' : '返回地点档案');
 
     setPages(`
         <div class="place-page">
             <div class="entry-photos-summary">
-                <a class="ribbon-back" href="${escapeHtml(serializeRoute(params.trip ? { name: 'trip', params: { id: params.trip } } : { name: 'place', params }))}">${params.trip ? '返回行程详情' : '返回地点档案'}</a>
+                <a class="ribbon-back" href="${escapeHtml(serializeRoute(returnRoute))}">${returnLabel}</a>
                 <p class="journal-label">媒体附件</p>
                 <h1>${escapeHtml(label)}</h1>
                 <p class="place-count">${photoCount} 张图片 · ${media.length - photoCount} 个视频</p>
@@ -4970,7 +4985,8 @@ function updateLedgerRoute(nextParams, options = {}) {
 }
 
 function updateChapterTabs(routeName) {
-    const activeName = routeName === 'entry' || routeName === 'photos' || routeName === 'trip'
+    const activeName = routeName === 'photos' && activeRoute?.params.all ? 'archive'
+        : routeName === 'entry' || routeName === 'photos' || routeName === 'trip'
         ? 'ledger'
         : (routeName === 'place' ? 'archive' : routeName);
     const chapterOrder = ['preface', 'ledger', 'archive'];

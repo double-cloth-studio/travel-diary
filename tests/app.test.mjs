@@ -308,6 +308,51 @@ test('省份媒体汇总覆盖各篇日记，排除其他省份和同名国外�
     assert.equal(app.serializeRoute({ name: 'photos', params: { id: 'note' } }), '#photos?id=note');
 });
 
+test('归档入口汇总所有日记的媒体，按日期分组并向后翻页', () => {
+    const records = [
+        { date: '2026-10-01', country_code: 'CN', admin_area: '江苏省', locality: '苏州市', descTitle: '园林', photo_folder: 'data/photos/old', photos: ['garden.jpg'] },
+        { date: '2026-10-03', country_code: 'JP', admin_area: '京都府', locality: '京都市', descTitle: '街头', photo_folder: 'data/photos/new', photos: ['street.jpg'], video_folder: 'data/videos/new', videos: ['walk.mp4'], media_order: ['video:walk.mp4', 'photo:street.jpg'] },
+        { date: '2026-10-04', country_code: 'CN', admin_area: '浙江省', locality: '杭州市', descTitle: '无附件', photos: [], videos: [] }
+    ].map(normalizeTravelLocation);
+    const archive = app.renderTestSummary(records, 'archive', { q: '不匹配的地点' });
+    assert.match(archive.left, /href="#photos\?all=1"/);
+    assert.match(archive.left, /2 张图片 · 1 个视频/);
+
+    const route = app.parseRoute(app.serializeRoute({ name: 'photos', params: { all: true } }));
+    assert.deepEqual(route.params, { all: true });
+    const full = app.renderTestPlace(records, route.params, true);
+    assert.match(full.left, /<h1>全部媒体<\/h1>/);
+    assert.match(full.left, /href="#archive">返回日记归档/);
+    assert.match(full.left, /2 张图片 · 1 个视频/);
+    assert.match(full.left, /data-media-filters/);
+    assert.equal(full.mediaGallery.groupByRecord, true);
+    assert.deepEqual(full.mediaGallery.media.map(item => item.name), ['walk.mp4', 'street.jpg', 'garden.jpg']);
+    assert.equal((full.right.match(/class="photo-sleeve-group-heading"/g) || []).length, 2);
+    assert.ok(full.right.indexOf('2026-10-03') < full.right.indexOf('2026-10-01'));
+    assert.doesNotMatch(full.right, /无附件/);
+    assert.equal(app.getTurnDirection({ name: 'archive' }, route), 'forward');
+    assert.equal(app.getTurnDirection(route, { name: 'archive' }), 'back');
+
+    assert.deepEqual(app.parseRoute('#photos?id=note&all=1').params, { id: 'note' });
+    assert.deepEqual(app.parseRoute('#photos?trip=holiday&all=1').params, { trip: 'holiday' });
+    assert.equal(app.serializeRoute({ name: 'photos', params: { id: 'note', all: true } }), '#photos?id=note');
+    assert.equal(app.serializeRoute({ name: 'photos', params: { trip: 'holiday', all: true } }), '#photos?trip=holiday');
+});
+
+test('全部媒体在空档案或无附件时保留归档入口和空状态', () => {
+    const noMedia = [{ date: '2026-10-01', country_code: 'CN', admin_area: '江苏省', locality: '苏州市', photos: [], videos: [] }].map(normalizeTravelLocation);
+    for (const records of [[], noMedia]) {
+        const archive = app.renderTestSummary(records, 'archive');
+        assert.match(archive.left, /href="#photos\?all=1"/);
+        assert.match(archive.left, /0 张图片 · 0 个视频/);
+        const full = app.renderTestPlace(records, { all: true }, true);
+        assert.match(full.left, /href="#archive">返回日记归档/);
+        assert.match(full.right, /日记中还没有图片或视频附件/);
+        assert.doesNotMatch(full.left, /data-media-filters/);
+        assert.deepEqual(full.mediaGallery.media, []);
+    }
+});
+
 test('没有媒体的省份保留记录列表，空附件页提供返回入口', t => {
     const previous = globalThis.requestAnimationFrame;
     globalThis.requestAnimationFrame = () => 1;

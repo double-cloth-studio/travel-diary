@@ -1,3 +1,53 @@
+.archive-media-section {
+    border-top: 1px solid var(--line);
+}
+
+.archive-media-link {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 18px 0;
+    color: var(--ink);
+}
+
+.archive-media-link h2 {
+    margin: 0;
+    font-size: 21px;
+    font-weight: 500;
+}
+
+.archive-media-link p {
+    margin: 6px 0 0;
+    color: var(--ink-soft);
+    font-size: 12px;
+}
+
+.archive-media-link > span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--stamp);
+    font-size: 12px;
+}
+
+.archive-media-link svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+}
+
+.archive-media-link:hover h2 {
+    color: var(--stamp);
+}
+
+.archive-media-link:focus-visible {
+    outline: 2px solid var(--stamp);
+    outline-offset: 4px;
+}
+
 .overview-metric-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
 }
