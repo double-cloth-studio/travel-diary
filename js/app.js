@@ -1,31 +1,31 @@
-import { orderMedia } from './media-order.mjs?v=2.1.153';
-import { createImageTextSearch, recordImages, recordImageTextMatches, imageTextMatches, clearImageTextCache, preloadImageTextIndex } from './image-text-search.js?v=2.1.153';
-import { createRecycleManager } from './recycle-manager.js?v=2.1.153';
-import { loadTravelData, loadTravelRecords } from './data.js?v=2.1.153';
-import { createRecordEditor } from './record-editor.js?v=2.1.153';
-import { createPasswordChangeDialog, createPasswordGate } from './record-password.js?v=2.1.153';
-import { createDataTransfer } from './data-transfer.js?v=2.1.153';
-import { createMediaManager } from './media-manager.js?v=2.1.153';
-import { detectWriterCapability } from './writer-capability.js?v=2.1.153';
-import { createRecordDeleteDialog } from './record-delete-dialog.js?v=2.1.153';
-import { confirmFeedback, showFeedback } from './feedback-dialog.js?v=2.1.153';
-import { prepareProfilePicture, uploadProfilePicture } from './profile-picture.js?v=2.1.153';
-import { DEFAULT_OWNER_NAME, loadOwnerName, saveOwnerName } from './profile-owner.js?v=2.1.153';
-import { createOwnerNameDialog } from './profile-owner-dialog.js?v=2.1.153';
-import { createOperationProgress, downloadWithProgress, saveBlobDownload } from './operation-progress.js?v=2.1.153';
-import { buildRecordSetSnapshot, deriveOverviewAnalytics } from './analytics.mjs?v=2.1.153';
-import { buildFallbackTitle, escapeHtml, getMediaFileUrl } from './utils.js?v=2.1.153';
-import { createMediaPreview, getMediaPreviewUrl, loadMediaPreview, releaseMediaPreview, saveMediaPreview, clearMediaPreviewCache, observeMediaVisibility, isMediaPreviewVisible, prefetchMediaPreview } from './media-preview.mjs?v=2.1.153';
-import { loadOriginalImage, clearOriginalImageCache } from './media-original.mjs?v=2.1.153';
-import { mountVirtualPhotoSleeve } from './photo-sleeve-virtual.mjs?v=2.1.153';
-import { enhanceCustomSelects } from './custom-select.js?v=2.1.153';
-import { buildItineraryGroups, countDistinctVisits, getVisitKey } from './visits.mjs?v=2.1.153';
+import { orderMedia } from './media-order.mjs?v=2.1.154';
+import { createImageTextSearch, recordImages, recordImageTextMatches, imageTextMatches, clearImageTextCache, preloadImageTextIndex } from './image-text-search.js?v=2.1.154';
+import { createRecycleManager } from './recycle-manager.js?v=2.1.154';
+import { loadTravelData, loadTravelRecords } from './data.js?v=2.1.154';
+import { createRecordEditor } from './record-editor.js?v=2.1.154';
+import { createPasswordChangeDialog, createPasswordGate } from './record-password.js?v=2.1.154';
+import { createDataTransfer } from './data-transfer.js?v=2.1.154';
+import { createMediaManager } from './media-manager.js?v=2.1.154';
+import { detectWriterCapability } from './writer-capability.js?v=2.1.154';
+import { createRecordDeleteDialog } from './record-delete-dialog.js?v=2.1.154';
+import { confirmFeedback, showFeedback } from './feedback-dialog.js?v=2.1.154';
+import { prepareProfilePicture, uploadProfilePicture } from './profile-picture.js?v=2.1.154';
+import { DEFAULT_OWNER_NAME, loadOwnerName, saveOwnerName } from './profile-owner.js?v=2.1.154';
+import { createOwnerNameDialog } from './profile-owner-dialog.js?v=2.1.154';
+import { createOperationProgress, downloadWithProgress, saveBlobDownload } from './operation-progress.js?v=2.1.154';
+import { buildRecordSetSnapshot, deriveOverviewAnalytics } from './analytics.mjs?v=2.1.154';
+import { buildFallbackTitle, escapeHtml, getMediaFileUrl } from './utils.js?v=2.1.154';
+import { createMediaPreview, getMediaPreviewUrl, loadMediaPreview, releaseMediaPreview, saveMediaPreview, clearMediaPreviewCache, observeMediaVisibility, isMediaPreviewVisible, prefetchMediaPreview } from './media-preview.mjs?v=2.1.154';
+import { loadOriginalImage, clearOriginalImageCache } from './media-original.mjs?v=2.1.154';
+import { mountVirtualPhotoSleeve } from './photo-sleeve-virtual.mjs?v=2.1.154';
+import { enhanceCustomSelects } from './custom-select.js?v=2.1.154';
+import { buildItineraryGroups, countDistinctVisits, getVisitKey } from './visits.mjs?v=2.1.154';
 import {
     formatLocationText,
     getAdminAreaFilterLabel,
     getCountryLocationLabels,
     isDomesticLocation
-} from './location.mjs?v=2.1.153';
+} from './location.mjs?v=2.1.154';
 import {
     constrainPhotoViewerTranslate,
     getInitialPhotoScale as calculateInitialPhotoScale,
@@ -34,7 +34,7 @@ import {
     getPhotoViewerBounds as calculatePhotoViewerBounds,
     getPhotoViewerRenderMetrics,
     getPhotoViewerZoomTranslate
-} from './photo-viewer-transform.mjs?v=2.1.153';
+} from './photo-viewer-transform.mjs?v=2.1.154';
 
 const DEFAULT_LEDGER_SORT = 'desc';
 const LEDGER_VIEW_STORAGE_KEY = 'travel-diary-ledger-view';
@@ -3719,8 +3719,18 @@ function prepareTransitionClone(node, className) {
 function createTransitionBook() {
     const source = refs.spread.parentElement;
     const clone = prepareTransitionClone(source, 'book-transition-book');
+    freezeMobilePaperBackground(clone.querySelector('.page-spread'));
     clone.querySelector('.closed-book-cover')?.remove();
     return { source, clone };
+}
+
+function freezeMobilePaperBackground(snapshot) {
+    if (!snapshot || !getComputedStyle(document.body).getPropertyValue?.('--mobile-paper-backdrop')) return;
+    // 正文复用视口衬底；翻页副本仍需携带自己的纸面材质，随曲面一起移动。
+    const paper = getComputedStyle(document.body, '::after');
+    snapshot.style.background = paper.background;
+    snapshot.style.backgroundBlendMode = paper.backgroundBlendMode;
+    snapshot.style.backgroundAttachment = 'fixed, fixed, fixed, scroll';
 }
 
 function renderWithBookCover(renderFn, mode) {
@@ -4053,6 +4063,10 @@ function waitForPageTurnAssets(pages, onReady) {
         for (const match of background.matchAll(/url\(["']?([^"')]+)["']?\)/g)) {
             backgrounds.add(match[1]);
         }
+        if (getComputedStyle(document.body).getPropertyValue?.('--mobile-paper-backdrop')) {
+            const backdrop = getComputedStyle(document.body, '::after').backgroundImage;
+            for (const match of backdrop.matchAll(/url\(["']?([^"')]+)["']?\)/g)) backgrounds.add(match[1]);
+        }
         page.querySelectorAll('img[src], .photo-sleeve img, [data-profile-picture-image]').forEach(image => {
             // 头像加载前保持 hidden，用相框判断可见性，避免漏掉尚无 src 的头像。
             const rect = image.hasAttribute?.('data-profile-picture-image')
@@ -4120,6 +4134,7 @@ function renderWithPageTurn(renderFn, options = {}) {
                     node.style[property] = style[property];
                 }
             });
+            freezeMobilePaperBackground(snapshot);
             snapshot.querySelectorAll('.context-panel').forEach(panel => panel.remove());
             const rect = refs.spread.getBoundingClientRect();
             Object.assign(snapshot.style, { width: `${bounds.width}px`, height: `${rect.height}px`, top: `${rect.top - top}px` });
@@ -5211,10 +5226,10 @@ function mountPhotoSleeves() {
         photoSleeveMedia.set(sleeve, media);
         disposePhotoSleeves.push(mountVirtualPhotoSleeve(sleeve, {
             media, grouped, renderItem: renderPhotoSleeveItem, renderHeading: renderPhotoSleeveHeading,
-            mountMedia: image => {
+            mountMedia: (image, waitForScrollIdle) => {
                 const button = image.closest('.photo-sleeve-button');
                 void prefetchMediaPreview(button.dataset.mediaSrc, button.dataset.mediaKind, () => image.isConnected);
-                observePageMedia(image, image, () => loadPhotoSleeveMedia(image));
+                observePageMedia(image, image, () => loadPhotoSleeveMedia(image, true, waitForScrollIdle));
             },
             releaseMedia: releasePhotoSleeveMedia
         }));
@@ -5541,14 +5556,14 @@ function getRecordMedia(record) {
         ...videos.map(item => ({ ...item, type: 'video' }))], record.media_order);
 }
 
-function loadPhotoSleeveMedia(image, retry = true) {
+function loadPhotoSleeveMedia(image, retry = true, beforeDisplay) {
     if (!pageMediaLoads.has(image) && image.dataset?.src) {
         const button = image.closest('.photo-sleeve-button');
         if (!button) return;
         // 视口检测已由调用方完成，主动解码不再等待浏览器的第二轮懒加载。
         image.loading = 'eager';
-        const ready = loadMediaPreview(image, button.dataset.mediaSrc, button.dataset.mediaKind, () => isMediaPreviewVisible(image))
-            .then(() => image.decode?.())
+        const ready = loadMediaPreview(image, button.dataset.mediaSrc, button.dataset.mediaKind, () => isMediaPreviewVisible(image), beforeDisplay)
+            .then(() => beforeDisplay ? undefined : image.decode?.())
             .then(() => {
                 if (image.isConnected && image.naturalWidth > 0) button.classList.add('is-media-ready');
             })
@@ -5564,7 +5579,7 @@ function loadPhotoSleeveMedia(image, retry = true) {
                 }
                 releaseMediaPreview(image);
                 pageMediaLoads.delete(image);
-                return loadPhotoSleeveMedia(image, false);
+                return loadPhotoSleeveMedia(image, false, beforeDisplay);
             });
         pageMediaLoads.set(image, ready);
     }

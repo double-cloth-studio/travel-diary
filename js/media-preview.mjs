@@ -192,6 +192,8 @@ function createPreviewQueue(limit) {
 // 小型缓存读取不被原图解码和后台生成占满，耗时生成仍限制为两个。
 const readPreview = createPreviewQueue(6);
 const generatePreview = createPreviewQueue(2);
+// 虚拟窗口的图片显示单独排队，避免一批缓存同时解码并上传纹理。
+const displayPreview = createPreviewQueue(2);
 
 function readCachedPreview(source, kind, isNeeded) {
     const key = `${kind}:${source}`;
@@ -371,7 +373,7 @@ export async function saveMediaPreview(source, blob) {
     rememberPreview(`${source.startsWith('data/videos/') ? 'video' : 'image'}:${source}`, blob);
 }
 
-export function loadMediaPreview(image, source, kind, isNeeded = () => image.isConnected) {
+export function loadMediaPreview(image, source, kind, isNeeded = () => image.isConnected, beforeDisplay) {
     const previous = imageRequests.get(image);
     if (previous?.source === source && previous.kind === kind && previous.generation === cacheGeneration) return previous.promise;
     previous?.release?.();
@@ -380,41 +382,50 @@ export function loadMediaPreview(image, source, kind, isNeeded = () => image.isC
     request.promise = (async () => {
         try {
             const blob = await getMediaPreviewBlob(source, kind, isNeeded);
-            if (!image.isConnected || imageRequests.get(image) !== request || request.generation !== cacheGeneration) return;
-            let entry = previewUrls.get(blob);
-            if (!entry) {
-                entry = { url: URL.createObjectURL(blob), users: 0, cached: previews.get(`${kind}:${source}`) === blob };
-                previewUrls.set(blob, entry);
-            }
-            // 缓存淘汰不能撤销尚未完成解码的 URL，同一路径的并发图片各自持有引用。
-            entry.users++;
-            let released = false;
-            const release = () => {
-                if (released) return;
-                released = true;
-                image.removeEventListener?.('load', release);
-                image.removeEventListener?.('error', failed);
-                entry.users--;
-                if (!entry.cached && !entry.users) {
-                    URL.revokeObjectURL(entry.url);
-                    previewUrls.delete(blob);
+            const display = async () => {
+                await beforeDisplay?.();
+                if (!image.isConnected || imageRequests.get(image) !== request || request.generation !== cacheGeneration) return;
+                requirePreview(isNeeded);
+                let entry = previewUrls.get(blob);
+                if (!entry) {
+                    entry = { url: URL.createObjectURL(blob), users: 0, cached: previews.get(`${kind}:${source}`) === blob };
+                    previewUrls.set(blob, entry);
                 }
+                // 缓存淘汰不能撤销尚未完成解码的 URL，同一路径的并发图片各自持有引用。
+                entry.users++;
+                let released = false;
+                const release = () => {
+                    if (released) return;
+                    released = true;
+                    image.removeEventListener?.('load', release);
+                    image.removeEventListener?.('error', failed);
+                    entry.users--;
+                    if (!entry.cached && !entry.users) {
+                        URL.revokeObjectURL(entry.url);
+                        previewUrls.delete(blob);
+                    }
+                };
+                const failed = () => {
+                    release();
+                    if (imageRequests.get(image) === request) imageRequests.delete(image);
+                };
+                request.release = release;
+                image.addEventListener?.('load', release, { once: true });
+                image.addEventListener?.('error', failed, { once: true });
+                // 已经通过可见性检测，避免原生 lazy 再延迟 Blob 解码。
+                image.loading = 'eager';
+                image.src = entry.url;
+                // 仅虚拟列表等待解码后再放行下一项，普通附件保持原有加载契约。
+                if (beforeDisplay) await image.decode?.();
             };
-            const failed = () => {
-                release();
-                if (imageRequests.get(image) === request) imageRequests.delete(image);
-            };
-            request.release = release;
-            image.addEventListener?.('load', release, { once: true });
-            image.addEventListener?.('error', failed, { once: true });
-            // 已经通过可见性检测，避免原生 lazy 再延迟 Blob 解码。
-            image.loading = 'eager';
-            image.src = entry.url;
+            if (beforeDisplay) await displayPreview(display);
+            else await display();
         } catch (error) {
             const current = imageRequests.get(image) === request && request.generation === cacheGeneration;
             if (current) imageRequests.delete(image);
             if (error.name === 'AbortError') throw error;
             if (current && image.isConnected) image.dispatchEvent(new Event('error'));
+            if (beforeDisplay) throw error;
         }
     })();
     return request.promise;

@@ -27,6 +27,66 @@ export function mountVirtualPhotoSleeve(sleeve, { media, grouped, renderItem, re
     let needsLayout = true;
     let frame;
     let disposed = false;
+    let windowFrom = Infinity;
+    let windowTo = -Infinity;
+    let scrolling = false;
+    let scrollTimer;
+    let idleFrame;
+    let lastScroll = 0;
+    let lastOffset = 0;
+    let rapidScroll = false;
+    const idleWaiters = new Set();
+
+    function finishScroll() {
+        scrolling = false;
+        rapidScroll = false;
+        clearTimeout(scrollTimer);
+        cancelAnimationFrame(idleFrame);
+        for (const resolve of idleWaiters) resolve();
+        idleWaiters.clear();
+        scheduleUpdate();
+    }
+
+    function waitForScrollIdle() {
+        if (!scrolling || disposed) return Promise.resolve();
+        return new Promise(resolve => idleWaiters.add(resolve));
+    }
+
+    function settleScroll() {
+        const stamp = lastScroll;
+        // 解码/绘制阻塞可能让计时器先于下一次滚动事件执行，连续两帧确认真正停稳。
+        idleFrame = requestAnimationFrame(() => {
+            idleFrame = requestAnimationFrame(() => {
+                idleFrame = undefined;
+                if (lastScroll === stamp) finishScroll();
+            });
+        });
+    }
+
+    function handleScroll(event) {
+        // 左页筛选和查看器的滚动不阻塞右页附件；手机由文档滚动。
+        if (event.target !== document && !event.target.contains?.(sleeve)) return;
+        const now = performance.now();
+        const offset = event.target === document ? window.scrollY : event.target.scrollTop;
+        const elapsed = now - lastScroll;
+        if (scrolling && elapsed < 100 && Math.abs(offset - lastOffset) > Math.max(8, elapsed)) rapidScroll = true;
+        scrolling = true;
+        lastScroll = now;
+        lastOffset = offset;
+        clearTimeout(scrollTimer);
+        cancelAnimationFrame(idleFrame);
+        // 旧浏览器没有 scrollend；持续输入期间重置兜底计时，不截断惯性滑动。
+        scrollTimer = setTimeout(settleScroll, 150);
+        scheduleUpdate();
+    }
+
+    function handleScrollEnd(event) {
+        if (event.target !== document && !event.target.contains?.(sleeve)) return;
+        clearTimeout(scrollTimer);
+        // 程序化滚动或连续滚轮可能在相邻输入间触发 scrollend，短暂静止后再解码。
+        cancelAnimationFrame(idleFrame);
+        scrollTimer = setTimeout(settleScroll, Math.max(0, 100 - (performance.now() - lastScroll)));
+    }
 
     function createRow(row) {
         const node = document.createElement('div');
@@ -90,6 +150,8 @@ export function mountVirtualPhotoSleeve(sleeve, { media, grouped, renderItem, re
     function update() {
         frame = undefined;
         if (disposed || !sleeve.isConnected || !sleeve.clientWidth) return;
+        // 快速连续滚动先复用当前窗口，停稳后直接挂载目标位置，跳过途中图片行的反复裁绘。
+        if (scrolling && rapidScroll && !needsLayout && width === sleeve.clientWidth) return;
         // 桌面右页独立滚动，手机纸页 display: contents 时由窗口滚动。
         const page = sleeve.closest('.paper-page');
         const pageBounds = page?.getBoundingClientRect();
@@ -98,6 +160,8 @@ export function mountVirtualPhotoSleeve(sleeve, { media, grouped, renderItem, re
         const bottom = clipped ? Math.min(innerHeight, pageBounds.bottom) : innerHeight;
         let contentTop = content.getBoundingClientRect().top;
         if (needsLayout || width !== sleeve.clientWidth) {
+            windowFrom = Infinity;
+            windowTo = -Infinity;
             width = sleeve.clientWidth;
             needsLayout = false;
             const offset = top - contentTop;
@@ -123,9 +187,16 @@ export function mountVirtualPhotoSleeve(sleeve, { media, grouped, renderItem, re
                 if (index >= 0) mountRow(index).querySelector(`[data-media-index="${focusIndex}"]`).focus({ preventScroll: true });
             }
         }
-        const overscan = Math.max(300, bottom - top);
+        const viewport = Math.max(300, bottom - top);
+        const visibleFrom = top - contentTop;
+        const visibleTo = bottom - contentTop;
+        // 保留已挂载的窗口，接近其边缘才批量移动；逐行滑动不再反复创建/销毁合成层。
+        if (visibleFrom >= windowFrom + viewport / 2 && visibleTo <= windowTo - viewport / 2) return;
+        const overscan = viewport * 2;
         const from = top - contentTop - overscan;
         const to = bottom - contentTop + overscan;
+        windowFrom = from;
+        windowTo = to;
         const needed = new Set();
         for (let index = findRow(from); index < rows.length && rows[index].top <= to; index++) {
             needed.add(index);
@@ -141,7 +212,7 @@ export function mountVirtualPhotoSleeve(sleeve, { media, grouped, renderItem, re
     function flushMedia() {
         const images = mounting;
         mounting = [];
-        images.forEach(mountMedia);
+        images.forEach(image => mountMedia(image, waitForScrollIdle));
     }
 
     function findRow(offset) {
@@ -178,7 +249,8 @@ export function mountVirtualPhotoSleeve(sleeve, { media, grouped, renderItem, re
         scheduleUpdate();
     }
 
-    addEventListener('scroll', scheduleUpdate, { capture: true, passive: true });
+    addEventListener('scroll', handleScroll, { capture: true, passive: true });
+    addEventListener('scrollend', handleScrollEnd, true);
     addEventListener('resize', invalidateLayout);
     sleeve.addEventListener('keydown', handleKeydown);
     const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(scheduleUpdate) : null;
@@ -190,7 +262,9 @@ export function mountVirtualPhotoSleeve(sleeve, { media, grouped, renderItem, re
         disposed = true;
         cancelAnimationFrame(frame);
         observer?.disconnect();
-        removeEventListener('scroll', scheduleUpdate, true);
+        removeEventListener('scroll', handleScroll, true);
+        removeEventListener('scrollend', handleScrollEnd, true);
+        finishScroll();
         removeEventListener('resize', invalidateLayout);
         document.fonts?.removeEventListener('loadingdone', invalidateLayout);
         sleeve.removeEventListener('keydown', handleKeydown);

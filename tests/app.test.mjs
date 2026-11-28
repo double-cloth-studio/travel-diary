@@ -6,7 +6,7 @@ import { normalizeTravelLocation } from '../js/location.mjs';
 globalThis.document = { addEventListener() {} };
 const app = await loadBrowserModule(new URL('../js/app.js', import.meta.url), `
 export { getRecordMedia, parseRoute, deriveTravelModel, normalizePhotoIndex, hasRecordNoteContent, renderMediaOverview,
-    renderWithPageTurn, renderWithBookCover, clearPageTurn, waitForPageTurnAssets, cloneTurningPage, cloneTransitionContent, createTransitionMediaImage, observePhotoSleeveMedia, createPageCurlFrames, createMobilePageCurlFrames, getTurnDirection, scheduleSearchRouteUpdate, syncRouteFromHash,
+    renderWithPageTurn, renderWithBookCover, clearPageTurn, waitForPageTurnAssets, freezeMobilePaperBackground, cloneTurningPage, cloneTransitionContent, createTransitionMediaImage, observePhotoSleeveMedia, createPageCurlFrames, createMobilePageCurlFrames, getTurnDirection, scheduleSearchRouteUpdate, syncRouteFromHash,
     applySearchRouteUpdate, syncPhotoSleevePreviewRows, syncProfilePictureImages, isMobileContextPanelDismissTarget,
     deleteTravelRecord, renderEmptyArchiveState, matchesMediaFilter, formatMediaReferenceError, trapPanelFocus, handleDocumentClick,
     restoreFocus, handleDocumentKeydown, updateLedgerRoute, serializeRoute, getRememberedLedgerView, rememberLedgerView, getTripRoutePlaces,
@@ -1284,6 +1284,37 @@ test('翻页等待纸面、可见图片和字体解码，忽略屏外图片并�
     await Promise.resolve();
     await Promise.resolve();
     assert.equal(calls.length, 3, '超时后的迟到回调不重复播放');
+});
+
+test('手机独立衬底参与翻页资源等待，副本保留已冻结的纸面材质', async t => {
+    const previous = { document: globalThis.document, window: globalThis.window, getComputedStyle: globalThis.getComputedStyle, Image: globalThis.Image };
+    t.after(() => Object.assign(globalThis, previous));
+    let finish;
+    const decoded = new Promise(resolve => { finish = resolve; });
+    const body = {};
+    globalThis.document = { body, fonts: { ready: Promise.resolve() } };
+    globalThis.window = { innerHeight: 844 };
+    let enabled = true;
+    const paper = { background: 'url("https://example.test/paper.webp") center / cover #f3e8cf', backgroundImage: 'url("https://example.test/paper.webp")', backgroundBlendMode: 'normal, multiply' };
+    globalThis.getComputedStyle = (node, pseudo) => pseudo === '::after' ? paper : ({ backgroundImage: 'none', getPropertyValue: () => node === body && enabled ? '1' : '' });
+    const sources = [];
+    globalThis.Image = class { set src(value) { sources.push(value); } decode() { return decoded; } };
+    const page = { getBoundingClientRect: () => ({ top: 0, bottom: 844 }), querySelectorAll: () => [] };
+    const ready = [];
+    app.waitForPageTurnAssets([page, page], value => ready.push(value));
+    assert.deepEqual(sources, ['https://example.test/paper.webp']);
+    const snapshot = { style: {} };
+    app.freezeMobilePaperBackground(snapshot);
+    assert.equal(snapshot.style.background, paper.background);
+    assert.equal(snapshot.style.backgroundBlendMode, paper.backgroundBlendMode);
+    assert.equal(snapshot.style.backgroundAttachment, 'fixed, fixed, fixed, scroll');
+    enabled = false;
+    app.freezeMobilePaperBackground(snapshot);
+    assert.equal(snapshot.style.background, paper.background, '切换到没有衬底的路由后，旧副本仍保留原材质');
+    assert.deepEqual(ready, []);
+    finish();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(ready, [true]);
 });
 
 test('翻页等待尚无 src 和正在读取的可见缩略图，复用懒加载任务并等到解码完成', async t => {

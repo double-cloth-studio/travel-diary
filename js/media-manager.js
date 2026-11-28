@@ -1,9 +1,9 @@
-import { escapeHtml, getMediaFileUrl, formatFileSize } from './utils.js?v=2.1.153';
-import { createPasswordGate } from './record-password.js?v=2.1.153';
-import { detectWriterCapability } from './writer-capability.js?v=2.1.153';
-import { createMediaFileLink, showMediaFilePreviewError } from './media-file-link.js?v=2.1.153';
-import { enhanceCustomSelects } from './custom-select.js?v=2.1.153';
-import { createImageTextSearch, imageSource, imageTextMatches, clearImageTextCache } from './image-text-search.js?v=2.1.153';
+import { escapeHtml, getMediaFileUrl, formatFileSize } from './utils.js?v=2.1.154';
+import { createPasswordGate } from './record-password.js?v=2.1.154';
+import { detectWriterCapability } from './writer-capability.js?v=2.1.154';
+import { createMediaFileLink, showMediaFilePreviewError } from './media-file-link.js?v=2.1.154';
+import { enhanceCustomSelects } from './custom-select.js?v=2.1.154';
+import { createImageTextSearch, imageSource, imageTextMatches, clearImageTextCache } from './image-text-search.js?v=2.1.154';
 
 function mediaGroupKey(file) {
     if (!file.records.length) return 'unused';

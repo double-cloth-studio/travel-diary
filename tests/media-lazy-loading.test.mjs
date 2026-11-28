@@ -14,6 +14,58 @@ const imageResponse = () => new Response(new Blob(['thumbnail'], { type: 'image/
 const hostResponse = () => new Response(null, { headers: { 'X-Travel-Media-Cache': 'disk-v1' } });
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
+test('缓存读取完成后仍等待滚动停稳，切页及离开视口的图片不会开始解码', async t => {
+    const preview = await previewModule(t, { fetch: async () => imageResponse() });
+    let resume;
+    const idle = new Promise(resolve => { resume = resolve; });
+    const images = Array.from({ length: 3 }, () => Object.assign(new EventTarget(), { isConnected: true }));
+    let visible = true;
+    const requests = images.map((image, index) => preview.loadMediaPreview(image, `data/photos/idle-${index}.jpg`, 'image', () => index !== 1 || visible, () => idle));
+    const outcomes = requests.map(request => request.catch(error => error.name));
+    await tick();
+    assert.ok(images.every(image => !image.src), '已有缓存也不能在滚动中触发新图解码');
+    visible = false;
+    preview.releaseMediaPreview(images[0]);
+    resume();
+    assert.deepEqual(await Promise.all(outcomes), [undefined, 'AbortError', undefined]);
+    assert.equal(images[0].src, undefined, '切页取消后不回填');
+    assert.equal(images[1].src, undefined, '停止时已经离开视口的图片不解码');
+    assert.match(images[2].src, /^blob:/, '当前窗口继续加载');
+    images[2].dispatchEvent(new Event('load'));
+});
+
+test('虚拟列表最多同时解码两张新图，普通附件不被等待滚动的队列堵住', async t => {
+    const preview = await previewModule(t, { fetch: async () => imageResponse() });
+    const finishes = [];
+    let firstBatchReady, secondBatchReady;
+    const firstBatch = new Promise(resolve => { firstBatchReady = resolve; });
+    const secondBatch = new Promise(resolve => { secondBatchReady = resolve; });
+    let active = 0, peak = 0;
+    const images = Array.from({ length: 4 }, () => Object.assign(new EventTarget(), {
+        isConnected: true,
+        decode: () => new Promise(resolve => {
+            peak = Math.max(peak, ++active);
+            finishes.push(() => { active--; resolve(); });
+            if (finishes.length === 2) firstBatchReady();
+            if (finishes.length === 4) secondBatchReady();
+        })
+    }));
+    const requests = images.map((image, index) => preview.loadMediaPreview(image, `data/photos/decode-${index}.jpg`, 'image', () => true, async () => {}));
+    await firstBatch;
+    assert.equal(finishes.length, 2);
+    assert.equal(images[2].src, undefined);
+    const ordinary = Object.assign(new EventTarget(), { isConnected: true });
+    await preview.loadMediaPreview(ordinary, 'data/photos/ordinary.jpg', 'image');
+    assert.match(ordinary.src, /^blob:/);
+    finishes[0](); finishes[1]();
+    await secondBatch;
+    assert.equal(finishes.length, 4);
+    finishes[2](); finishes[3]();
+    await Promise.all(requests);
+    assert.equal(peak, 2);
+    [...images, ordinary].forEach(image => image.dispatchEvent(new Event('load')));
+});
+
 test('屏外预读只读取已有缓存，与可见加载共享请求，缓存缺失不会生成或下载原图', async t => {
     const calls = [];
     let finish;
@@ -37,6 +89,19 @@ test('屏外预读只读取已有缓存，与可见加载共享请求，缓存�
     assert.ok(calls.every(url => url.endsWith('?cached=1')), '预读不进入后台生成入口');
     await preview.prefetchMediaPreview('data/photos/trip/removed.png', 'image', () => false);
     assert.equal(calls.length, 2, '已卸载的虚拟行不预读');
+});
+
+test('虚拟列表解码失败向调用方报告，并释放显示队列供后续图片继续加载', async t => {
+    const preview = await previewModule(t, { fetch: async () => imageResponse() });
+    let errors = 0;
+    const failed = Object.assign(new EventTarget(), { isConnected: true, decode: async () => { throw new Error('无法解码缩略图'); } });
+    failed.addEventListener('error', () => errors++);
+    const next = Object.assign(new EventTarget(), { isConnected: true, decode: async () => {} });
+    await assert.rejects(preview.loadMediaPreview(failed, 'data/photos/decode-failed.jpg', 'image', () => true, async () => {}), /无法解码缩略图/);
+    assert.equal(errors, 1);
+    await preview.loadMediaPreview(next, 'data/photos/decode-next.jpg', 'image', () => true, async () => {});
+    assert.match(next.src, /^blob:/);
+    next.dispatchEvent(new Event('load'));
 });
 
 test('两项慢媒体生成期间，缓存命中的缩略图仍可完成读取', async t => {

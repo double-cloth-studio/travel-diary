@@ -164,6 +164,22 @@
     }
 
     /* 详情页在窄屏按阅读顺序排列：顶部摘要、正文或相关记录、相邻项导航。 */
+    body:is([data-route="trip"], [data-route="entry"], [data-route="place"], [data-route="photos"]) {
+        --mobile-paper-backdrop: 1;
+        background-attachment: scroll;
+    }
+
+    /* 固定材质只绘制一个视口，避免 fixed 背景让超长纸面在每次滚动时重新栅格化。 */
+    body:is([data-route="trip"], [data-route="entry"], [data-route="place"], [data-route="photos"])::after {
+        display: block;
+        background:
+            linear-gradient(rgba(249, 239, 223, 0.58), rgba(244, 232, 215, 0.6)),
+            url("../assets/images/pages/left-page-ledger-travel-diary.webp") center / cover,
+            url("../assets/textures/paper-grain.png"),
+            #f3e8cf;
+        background-blend-mode: normal, normal, multiply, normal;
+    }
+
     body[data-route="trip"] .page-spread,
     body[data-route="entry"] .page-spread,
     body[data-route="place"] .page-spread,
@@ -176,13 +192,7 @@
         /* 保留原来纸边的占位，让装饰层的定位框与纸面外沿一致。 */
         border-inline: 0;
         padding-inline: 5px;
-        background:
-            linear-gradient(rgba(249, 239, 223, 0.58), rgba(244, 232, 215, 0.6)),
-            url("../assets/images/pages/left-page-ledger-travel-diary.webp") center / cover,
-            url("../assets/textures/paper-grain.png"),
-            #f3e8cf;
-        background-attachment: fixed, fixed, fixed, scroll;
-        background-blend-mode: normal, normal, multiply, normal;
+        background: transparent;
         box-shadow: inset 3px 0 7px rgba(133, 100, 62, 0.13);
     }
 
