@@ -35,7 +35,7 @@ Travel Diary 是一本数字旅行日志。它把每一次出发整理成行程�
 | Node.js（受支持的 LTS 版本） | 本机运行必需 | 启动本机服务、执行测试及全部 Node.js 脚本，只使用内置模块。Docker 部署由镜像提供 Node.js。 |
 | Docker Engine 与 Docker Compose 插件 | 服务器部署必需 | 支持 AMD64 / ARM64，可在线拉取镜像或使用完整离线部署包。所需 Compose 能力见部署指南。 |
 | npm | 可选 | 随 Node.js 提供，用于执行下方 `npm` 命令；也可直接用 `node` 运行脚本，无需 `npm install`。 |
-| Edge、Chrome 或 Chromium | 本机生成缩略图时需要 | 后端按需生成及 `media:previews` 批量生成图片、视频和头像缩略图。可用配置文件、`TRAVEL_BROWSER_PATH` 或批量命令的 `--browser` 指定。Docker 镜像内置 Chromium。后端生成失败时由前端压缩并回传保存，已有缓存直接复用。 |
+| Edge、Chrome 或 Chromium | 本机生成缩略图与文字索引时需要 | 后端按需生成及 `media:previews` 批量生成缩略图，`media:ocr` 提前构建图片文字索引。可用配置文件、`TRAVEL_BROWSER_PATH` 或批量命令的 `--browser` 指定。Docker 镜像内置 Chromium。后端预览生成失败时由前端压缩并回传保存，已有缓存直接复用。 |
 | 网络连接 | 按部署方式 | 在线部署需要下载镜像并申请证书；离线部署提前取得安装包即可。运行时无需外部服务，更新地点目录时需要联网。 |
 
 > 项目没有运行时 npm 依赖，也没有 `package-lock.json`、`node_modules` 或前端构建步骤；字体构建工具（HarfBuzz / WOFF2 WASM）、字体、拼音及地点目录随仓库分发。媒体预览不需要 FFmpeg，部署也不需要额外构建工具。
@@ -255,6 +255,7 @@ npm start
 | `npm run data:archive` | `node scripts/build-data-backup.js` | 导出数据与认证配置 ZIP。 |
 | `npm run data:sort` | `node scripts/sort-travel-data.js` | 检查并按日期升序整理日记索引。 |
 | `npm run media:previews` | `node scripts/build-media-previews.js` | 批量生成图片、视频和头像缩略图。 |
+| `npm run media:ocr` | `node scripts/build-image-text-index.js` | 提前构建图片文字索引，搜索直接匹配缓存。 |
 | `npm run cache:clear` | `node scripts/clear-cache.js` | 清理缓存，保留回收站。 |
 | `npm run fonts` | `node scripts/build-fonts.mjs` | 补齐完整 WOFF2、轻量字集和字体 CSS。 |
 | `npm run fonts:core` | `node scripts/build-fonts.mjs --core` | 仅补齐轻量字集和字体 CSS。 |
@@ -391,6 +392,14 @@ npm run media:previews -- --skip-missing
 # 查看批量预览命令的可用参数和用法
 npm run media:previews -- --help
 
+# 提前识别所有图片文字，保存到 .cache/image-text/，有效索引自动跳过
+npm run media:ocr
+# 指定项目和浏览器；可跳过未提供的原图，其他失败仍返回退出码 1
+npm run media:ocr -- --dir "项目目录" --browser "浏览器可执行文件路径" --skip-missing
+# 强制重新识别，或查看帮助
+npm run media:ocr -- --force
+npm run media:ocr -- --help
+
 # 清理 .cache/ 中的缓存，保留回收站；字体和缩略图在下次访问时自动重建
 npm run cache:clear
 # 清理指定项目目录下的缓存，保留规则与默认命令相同
@@ -398,6 +407,10 @@ npm run cache:clear -- --dir "项目目录"
 # 查看缓存清理命令的可用参数和用法
 npm run cache:clear -- --help
 ```
+
+图片文字索引使用随项目提供的简繁中文及英文模型，在本机 Edge / Chrome / Chromium 中离线构建，不新增 npm 依赖。命令覆盖当前附件、未引用图片、头像和回收站中的图片版本，浏览器路径沿用缩略图的配置。Docker 中可执行 `docker compose exec -w /var/lib/travel-diary app npm run media:ocr`。
+
+网页加载时批量预读有效文字索引，各处搜索直接在内存中匹配，不再逐张下载原图或启动 OCR；回收站文字随已认证的回收清单加载。原图大小、mtime、ctime 或识别版本变化后索引失效，重新运行命令即可补齐。无索引图片仍可按需识别并将当前图结果回存磁盘；新选入的 ZIP 可按内容摘要复用已加载结果，否则仍需首次识别。毫秒级响应指索引已构建并加载后的搜索，首次识别本身不保证毫秒完成。索引由 Git 忽略且不进入个人备份，清理缓存后需重新构建。
 
 ### 字体与地点目录
 

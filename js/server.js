@@ -8,6 +8,7 @@ const { createRecordApi, normalizeAllowedOrigins } = require('./record-store.js'
 const { readAuthConfig } = require('./auth.js');
 const { createMediaPreviewStore, MAXIMUM_PREVIEW_BYTES } = require('./media-preview-store.js');
 const { createMediaPreviewGenerator } = require('./media-preview-generator.js');
+const { createImageTextStore, MAXIMUM_TEXT_BYTES } = require('./image-text-store.js');
 const { CONFIG_FILENAME, LOCAL_CONFIG_FILENAME, loadRuntimeConfig } = require('./runtime-config.js');
 const { normalizeBasePath } = require('./deployment-config.js');
 
@@ -316,6 +317,7 @@ function createHandler(rootDir, options = {}) {
   const basePath = normalizeBasePath(options.basePath ?? config.server.basePath);
   const writeMode = options.writeMode ?? config.server.writeMode;
   const mediaPreviews = createMediaPreviewStore(rootDir);
+  const imageText = createImageTextStore(rootDir);
   let fontCache;
   const generateMediaPreview = (options.generateMediaPreviews ?? config.mediaPreviews.enabled)
     ? createMediaPreviewGenerator(rootDir, undefined, config.mediaPreviews) : null;
@@ -363,7 +365,8 @@ function createHandler(rootDir, options = {}) {
     }
 
     const previewRequest = req.url.split('?')[0].startsWith('/.cache/media-previews/');
-    if (req.method !== 'GET' && req.method !== 'HEAD' && !(previewRequest && req.method === 'PUT')) {
+    const imageTextRequest = req.url.split('?')[0] === '/.cache/image-text/file';
+    if (req.method !== 'GET' && req.method !== 'HEAD' && !((previewRequest || imageTextRequest) && req.method === 'PUT')) {
       res.writeHead(405, {
         'Content-Type': 'text/plain; charset=utf-8',
         Allow: 'GET, HEAD, OPTIONS'
@@ -384,6 +387,42 @@ function createHandler(rootDir, options = {}) {
     }
     if (pathname === '/') {
       pathname = '/index.html';
+    }
+
+    if (['/.cache/image-text/index.json', '/.cache/image-text/file'].includes(pathname)) {
+      try {
+        const source = { path: requestUrl.searchParams.get('path') };
+        let data;
+        if (pathname.endsWith('/index.json')) data = { entries: await imageText.list() };
+        else if (req.method === 'PUT') {
+          const origin = new URL(req.headers.origin || 'about:blank');
+          if (!['http:', 'https:'].includes(origin.protocol) || origin.host !== req.headers.host
+              || (req.headers['sec-fetch-site'] && req.headers['sec-fetch-site'] !== 'same-origin')) {
+            throw Object.assign(new Error('拒绝跨站缓存写入。'), { status: 403 });
+          }
+          if (req.headers['content-type'] !== 'text/plain; charset=utf-8') throw Object.assign(new Error('索引类型无效。'), { status: 415 });
+          let size = 0;
+          const chunks = [];
+          for await (const chunk of req) {
+            size += chunk.length;
+            if (size > MAXIMUM_TEXT_BYTES) throw Object.assign(new Error('图片文字过长。'), { status: 413 });
+            chunks.push(chunk);
+          }
+          await imageText.put(source, Buffer.concat(chunks).toString('utf8'), req.headers['if-match']);
+          res.writeHead(204, { ...STATIC_SECURITY_HEADERS, 'Cache-Control': 'no-store' }); res.end(); return;
+        } else {
+          const { text, digest, etag } = await imageText.get(source);
+          data = { text, digest, etag };
+        }
+        const body = Buffer.from(JSON.stringify(data));
+        res.writeHead(200, { ...STATIC_SECURITY_HEADERS, 'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'private, no-store', 'Content-Length': body.length });
+        res.end(req.method === 'HEAD' ? undefined : body);
+      } catch (error) {
+        res.writeHead(error.status || (error.code === 'ENOENT' ? 404 : 503), { ...STATIC_SECURITY_HEADERS, 'Cache-Control': 'no-store' });
+        res.end(req.method === 'HEAD' ? undefined : '图片文字索引不可用。');
+      }
+      return;
     }
 
     if (pathname.startsWith('/.cache/fonts/')) {

@@ -6,7 +6,7 @@ import { createContentPreviewScope, mediaKind } from './content-preview.js?v=2.1
 import { enhanceCustomSelects } from './custom-select.js?v=2.1.152';
 import { renderRecordDifference, loadDifferenceMedia } from './record-diff-view.js?v=2.1.152';
 import { recordIdentity } from './record-identity.mjs?v=2.1.152';
-import { createImageTextSearch, imageTextMatches } from './image-text-search.js?v=2.1.152';
+import { createImageTextSearch, imageTextMatches, loadImageTextEntries } from './image-text-search.js?v=2.1.152';
 import { buildRecycleTree, buildRestorePreviewTree, groupRecycleItems, recycleRestoreConflicts, recycleRecordLabel, recycleFileType, recycleSelectionGroups, selectRecycleParts } from './recycle-tree.mjs?v=2.1.152';
 
 function restoreChangeTitle(record, comparison) {
@@ -509,6 +509,7 @@ export function createRecycleManager(onRestored, { onClose, isActive = () => tru
             catch { throw new Error('回收站返回了无法识别的结果，请刷新后重试。'); }
             if (!response.ok || !Array.isArray(result.items)) throw new Error(result.error || '无法读取回收站，请刷新后重试。');
             report = result;
+            await loadImageTextEntries(result.imageText || []);
             grouping = groupRecycleItems(report.items, report.currentRecords);
             stale = false;
             render();
