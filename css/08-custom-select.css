@@ -129,7 +129,8 @@
     inset: auto 0 calc(100% + 8px);
 }
 
-.ledger-feature-filters .custom-select-menu {
+.ledger-feature-filters .custom-select-menu,
+.media-filters .custom-select-menu {
     min-width: 0;
     max-width: none;
 }

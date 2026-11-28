@@ -322,17 +322,6 @@
     margin-top: 20px;
 }
 
-.media-filters label { display: block; margin-bottom: 6px; }
-.media-filters select {
-    width: 100%;
-    min-height: 44px;
-    padding: 0 12px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    color: var(--ink);
-    background: var(--paper-50);
-    font: inherit;
-}
 .media-filters .place-count { margin: 0; }
 
 .media-overview {

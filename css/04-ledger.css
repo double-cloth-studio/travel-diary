@@ -314,6 +314,8 @@
     transition: transform 0.16s ease, background 0.16s ease, color 0.16s ease, opacity 0.16s ease;
 }
 
+.search-clear[hidden] { display: none; }
+
 .search-clear:hover,
 .search-clear:focus-visible {
     color: #2f1d0f;

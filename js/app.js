@@ -1,30 +1,30 @@
-import { orderMedia } from './media-order.mjs?v=2.1.150';
-import { createRecycleManager } from './recycle-manager.js?v=2.1.150';
-import { loadTravelData, loadTravelRecords } from './data.js?v=2.1.150';
-import { createRecordEditor } from './record-editor.js?v=2.1.150';
-import { createPasswordChangeDialog, createPasswordGate } from './record-password.js?v=2.1.150';
-import { createDataTransfer } from './data-transfer.js?v=2.1.150';
-import { createMediaManager } from './media-manager.js?v=2.1.150';
-import { detectWriterCapability } from './writer-capability.js?v=2.1.150';
-import { createRecordDeleteDialog } from './record-delete-dialog.js?v=2.1.150';
-import { confirmFeedback, showFeedback } from './feedback-dialog.js?v=2.1.150';
-import { prepareProfilePicture, uploadProfilePicture } from './profile-picture.js?v=2.1.150';
-import { DEFAULT_OWNER_NAME, loadOwnerName, saveOwnerName } from './profile-owner.js?v=2.1.150';
-import { createOwnerNameDialog } from './profile-owner-dialog.js?v=2.1.150';
-import { createOperationProgress, downloadWithProgress, saveBlobDownload } from './operation-progress.js?v=2.1.150';
-import { buildRecordSetSnapshot, deriveOverviewAnalytics } from './analytics.mjs?v=2.1.150';
-import { buildFallbackTitle, escapeHtml, getMediaFileUrl } from './utils.js?v=2.1.150';
-import { createMediaPreview, getMediaPreviewUrl, loadMediaPreview, releaseMediaPreview, saveMediaPreview, clearMediaPreviewCache, observeMediaVisibility, isMediaPreviewVisible } from './media-preview.mjs?v=2.1.150';
-import { loadOriginalImage, clearOriginalImageCache } from './media-original.mjs?v=2.1.150';
-import { mountVirtualPhotoSleeve } from './photo-sleeve-virtual.mjs?v=2.1.150';
-import { enhanceCustomSelects } from './custom-select.js?v=2.1.150';
-import { buildItineraryGroups, countDistinctVisits, getVisitKey } from './visits.mjs?v=2.1.150';
+import { orderMedia } from './media-order.mjs?v=2.1.152';
+import { createRecycleManager } from './recycle-manager.js?v=2.1.152';
+import { loadTravelData, loadTravelRecords } from './data.js?v=2.1.152';
+import { createRecordEditor } from './record-editor.js?v=2.1.152';
+import { createPasswordChangeDialog, createPasswordGate } from './record-password.js?v=2.1.152';
+import { createDataTransfer } from './data-transfer.js?v=2.1.152';
+import { createMediaManager } from './media-manager.js?v=2.1.152';
+import { detectWriterCapability } from './writer-capability.js?v=2.1.152';
+import { createRecordDeleteDialog } from './record-delete-dialog.js?v=2.1.152';
+import { confirmFeedback, showFeedback } from './feedback-dialog.js?v=2.1.152';
+import { prepareProfilePicture, uploadProfilePicture } from './profile-picture.js?v=2.1.152';
+import { DEFAULT_OWNER_NAME, loadOwnerName, saveOwnerName } from './profile-owner.js?v=2.1.152';
+import { createOwnerNameDialog } from './profile-owner-dialog.js?v=2.1.152';
+import { createOperationProgress, downloadWithProgress, saveBlobDownload } from './operation-progress.js?v=2.1.152';
+import { buildRecordSetSnapshot, deriveOverviewAnalytics } from './analytics.mjs?v=2.1.152';
+import { buildFallbackTitle, escapeHtml, getMediaFileUrl } from './utils.js?v=2.1.152';
+import { createMediaPreview, getMediaPreviewUrl, loadMediaPreview, releaseMediaPreview, saveMediaPreview, clearMediaPreviewCache, observeMediaVisibility, isMediaPreviewVisible } from './media-preview.mjs?v=2.1.152';
+import { loadOriginalImage, clearOriginalImageCache } from './media-original.mjs?v=2.1.152';
+import { mountVirtualPhotoSleeve } from './photo-sleeve-virtual.mjs?v=2.1.152';
+import { enhanceCustomSelects } from './custom-select.js?v=2.1.152';
+import { buildItineraryGroups, countDistinctVisits, getVisitKey } from './visits.mjs?v=2.1.152';
 import {
     formatLocationText,
     getAdminAreaFilterLabel,
     getCountryLocationLabels,
     isDomesticLocation
-} from './location.mjs?v=2.1.150';
+} from './location.mjs?v=2.1.152';
 import {
     constrainPhotoViewerTranslate,
     getInitialPhotoScale as calculateInitialPhotoScale,
@@ -33,7 +33,7 @@ import {
     getPhotoViewerBounds as calculatePhotoViewerBounds,
     getPhotoViewerRenderMetrics,
     getPhotoViewerZoomTranslate
-} from './photo-viewer-transform.mjs?v=2.1.150';
+} from './photo-viewer-transform.mjs?v=2.1.152';
 
 const DEFAULT_LEDGER_SORT = 'desc';
 const LEDGER_VIEW_STORAGE_KEY = 'travel-diary-ledger-view';
@@ -2074,13 +2074,16 @@ function renderGroupedPhotosRoute(params = {}) {
 function renderMediaFilters(total) {
     if (!total) return '';
     return `<form class="media-filters" role="search" aria-label="搜索与筛选附件" data-media-filters>
-        <div>
+        <div class="media-filter-field">
             <label class="field-label" for="mediaSearch">搜索附件</label>
-            <div class="ink-field search-field"><input type="search" id="mediaSearch" name="query" placeholder="文件名或日记标题" autocomplete="off" aria-controls="mediaResults"></div>
+            <div class="ink-field search-field">
+                <input type="search" id="mediaSearch" name="query" placeholder="文件名或日记标题" autocomplete="off" aria-controls="mediaResults">
+                <button class="search-clear" type="button" data-action="clear-search" data-target="media" aria-label="清空附件搜索" hidden>×</button>
+            </div>
         </div>
-        <div>
-            <label class="field-label" for="mediaType">媒体类型</label>
-            <select id="mediaType" name="kind" aria-controls="mediaResults">
+        <div class="media-filter-field">
+            <label class="field-label" for="mediaTypeButton">媒体类型</label>
+            <select id="mediaType" name="kind" data-custom-select aria-label="媒体类型" aria-controls="mediaResults">
                 <option value="">全部</option><option value="image">图片</option><option value="video">视频</option>
             </select>
         </div>
@@ -2100,6 +2103,7 @@ function bindMediaFilters({ media, groupByRecord }) {
     const count = form.querySelector('[data-media-result-count]');
     const input = form.elements.query;
     const select = form.elements.kind;
+    const clearSearch = form.querySelector('.search-clear');
     let previousQuery = '';
     let previousKind = '';
     function update() {
@@ -2118,7 +2122,10 @@ function bindMediaFilters({ media, groupByRecord }) {
         count.textContent = filtered ? `找到 ${matches.length} 项附件，共 ${media.length} 项` : `显示全部 ${media.length} 项附件`;
     }
     form.addEventListener('submit', event => event.preventDefault());
-    input.addEventListener('input', event => { if (!event.isComposing) update(); });
+    input.addEventListener('input', event => {
+        clearSearch.hidden = !input.value;
+        if (!event.isComposing) update();
+    });
     input.addEventListener('compositionend', update);
     select.addEventListener('change', update);
 }
@@ -2216,6 +2223,14 @@ function renderFatalError(error) {
 function handleClearSearch(button) {
     const target = button.getAttribute('data-target');
     clearSearchRouteTimer();
+
+    if (target === 'media') {
+        const input = document.getElementById('mediaSearch');
+        input.value = '';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.focus();
+        return;
+    }
 
     if (target === 'ledger') {
         updateLedgerRoute({ q: '' }, { replace: true, focusId: 'ledgerSearch', animate: false });

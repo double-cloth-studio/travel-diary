@@ -52,7 +52,7 @@ function updateCustomSelectPlacement(wrapper) {
             bottom: bounds.top + boundary.clientTop + boundary.clientHeight,
             left: bounds.left + boundary.clientLeft
         };
-    const isLedgerFilter = Boolean(wrapper.closest('.ledger-feature-filters'));
+    const usesBoundedMenu = Boolean(wrapper.closest('.ledger-feature-filters, .media-filters'));
     const gap = 8;
     const visibleTop = Math.max(8, boundaryRect.top);
     const visibleBottom = Math.min(window.innerHeight - 8, boundaryRect.bottom);
@@ -62,9 +62,9 @@ function updateCustomSelectPlacement(wrapper) {
     {
         const boundaryLeft = Math.max(8, boundaryRect.left + 8);
         const boundaryRight = Math.min(window.innerWidth - 8, boundaryRect.right - 8);
-        const preferredWidth = isLedgerFilter ? Math.min(320, Math.max(240, triggerRect.width)) : Math.max(240, triggerRect.width);
+        const preferredWidth = usesBoundedMenu ? Math.min(320, Math.max(240, triggerRect.width)) : Math.max(240, triggerRect.width);
         const menuWidth = Math.max(0, Math.min(preferredWidth, boundaryRight - boundaryLeft));
-        const alignsRight = isLedgerFilter;
+        const alignsRight = usesBoundedMenu;
         const menuLeft = alignsRight
             ? Math.min(Math.max(triggerRect.right - menuWidth, boundaryLeft), boundaryRight - menuWidth)
             : Math.min(Math.max(triggerRect.left, boundaryLeft), boundaryRight - menuWidth);
