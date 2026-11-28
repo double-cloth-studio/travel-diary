@@ -292,15 +292,15 @@ test('自定义下拉框在点击而非按下时选择，保留移动端滑动�
     assert.match(recordEditorJs, /\.\/custom-select\.js\?v=[^']+/);
 });
 
-test('自定义下拉框初始方向和打开后的箭头都随弹出方向变化', () => {
+test('自定义下拉框仅在打开时测量，箭头随弹出方向变化', () => {
     assert.match(customSelectJs, /function getCustomSelectBoundary\(wrapper\)[\s\S]*?overflowY[\s\S]*?return boundary;/);
     assert.match(customSelectJs, /menu\.hidden = false;\s*updateCustomSelectPlacement\(wrapper\);/);
     assert.match(customSelectJs, /classList\.toggle\('is-open-upward', opensUpward\)/);
     assert.match(customSelectJs, /classList\.toggle\('is-open-downward', !opensUpward\)/);
     assert.match(customSelectJs, /document\.addEventListener\('scroll', updateCustomSelectPlacements, \{ passive: true, capture: true \}\)/);
     assert.match(customSelectJs, /window\.addEventListener\('resize', updateCustomSelectPlacements, \{ passive: true \}\)/);
-    assert.match(customSelectJs, /renderCustomSelect\(wrapper\);\s*updateCustomSelectPlacement\(wrapper\);/);
-    assert.match(customSelectJs, /menu\.hidden = true;\s*updateCustomSelectPlacement\(wrapper\);/);
+    assert.match(customSelectJs, /menu\.hidden \|\| !trigger\.getClientRects/);
+    assert.doesNotMatch(customSelectJs, /menu\.cloneNode/);
     assert.match(journalCss, /\.custom-select\.is-open-downward \.custom-select-chevron\s*\{\s*transform: translateY\(-65%\) rotate\(45deg\);\s*\}/);
     assert.match(journalCss, /\.custom-select\.is-open-upward \.custom-select-chevron\s*\{\s*transform: translateY\(-20%\) rotate\(225deg\);\s*\}/);
     assert.match(journalCss, /\.custom-select\.is-open\.is-open-downward \.custom-select-chevron\s*\{\s*transform: translateY\(-20%\) rotate\(225deg\);\s*\}/);
@@ -824,7 +824,8 @@ test('日记页最多预览三行媒体且提供全集媒体页', () => {
     assert.match(appJs, /function syncPhotoSleevePreviewRows\(\)/);
     assert.match(appJs, /function getPhotoSleeveColumnCount\(sleeve\)/);
     assert.match(appJs, /const visibleLimit = columnCount \* previewRows;/);
-    assert.match(appJs, /button\.hidden = index >= visibleLimit;/);
+    assert.match(appJs, /buttons\.slice\(count\)\.forEach/);
+    assert.match(appJs, /media\.slice\(buttons\.length, count\)/);
     assert.match(journalCss, /\.photo-sleeve-button\[hidden\]\s*\{\s*display: none;\s*\}/);
     assert.match(appJs, /photo-sleeve-preview/);
     assert.match(appJs, /data-action="view-all-photos"/);

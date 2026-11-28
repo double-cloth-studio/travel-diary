@@ -471,7 +471,7 @@ function createHandler(rootDir, options = {}) {
           return;
         }
         let { image, etag } = await mediaPreviews.get(pathname);
-        if (!image && req.method === 'GET' && generateMediaPreview) {
+        if (!image && req.method === 'GET' && new URL(req.url, 'http://localhost').searchParams.get('cached') !== '1' && generateMediaPreview) {
           try {
             await generateMediaPreview(pathname);
           } catch {

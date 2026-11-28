@@ -135,7 +135,7 @@ test('菜单获得焦点后仍可键盘导航，Escape 关闭并恢复按钮焦�
     assert.equal(menu.hidden, true);
 });
 
-test('收起的选择框按可用空间预设方向，滚动与缩放时同步更新且保持隐藏', () => {
+test('关闭的选择框不测量布局，打开后随滚动与缩放更新方向', () => {
     const originals = { document: globalThis.document, window: globalThis.window, requestAnimationFrame: globalThis.requestAnimationFrame };
     const events = {};
     const frames = [];
@@ -175,7 +175,7 @@ test('收起的选择框按可用空间预设方向，滚动与缩放时同步�
     try {
         globalThis.document = {
             documentElement: {},
-            querySelectorAll: selector => selector === '.custom-select' ? [wrapper] : [],
+            querySelectorAll: selector => selector === '[data-custom-select].is-open' && !hidden ? [wrapper] : [],
             addEventListener: (name, handler) => { events[name] = handler; }
         };
         globalThis.window = {
@@ -185,26 +185,17 @@ test('收起的选择框按可用空间预设方向，滚动与缩放时同步�
         globalThis.requestAnimationFrame = callback => frames.push(callback);
 
         customSelect.enhanceCustomSelects();
-        assert.equal(frames.length, 1);
-        frames.shift()();
-        assert.equal(measurements, 1);
-        assert.ok(classes.has('is-open-upward'));
+        assert.equal(frames.length, 0);
+        assert.equal(measurements, 0);
         assert.equal(menu.style.cssText, '');
         assert.equal(hiddenChanges, 0);
         assert.equal(menu.hidden, true);
 
         events.scroll();
         events.resize();
-        frames.shift()();
-        assert.equal(measurements, 2);
+        assert.equal(frames.length, 0);
+        assert.equal(measurements, 0);
         assert.equal(hiddenChanges, 0);
-
-        top = 455;
-        events.scroll();
-        frames.shift()();
-        assert.ok(classes.has('is-open-downward'));
-        assert.equal(menu.hidden, true);
-        top = 510;
 
         menu.hidden = false;
         events.resize();
@@ -236,9 +227,8 @@ test('收起的选择框按可用空间预设方向，滚动与缩放时同步�
         visible = true;
         top = 100;
         events.scroll();
-        frames.shift()();
-        assert.equal(measurements, previousMeasurements + 1);
-        assert.ok(classes.has('is-open-downward'));
+        assert.equal(frames.length, 0);
+        assert.equal(measurements, previousMeasurements);
         assert.equal(menu.style.cssText, '');
         assert.equal(hiddenChanges, 2);
     } finally {

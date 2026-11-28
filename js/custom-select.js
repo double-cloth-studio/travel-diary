@@ -18,10 +18,10 @@ function closeCustomSelect(wrapper) {
     const trigger = wrapper.querySelector('[data-custom-select-trigger]');
     const menu = wrapper.querySelector('[data-custom-select-menu]');
     if (!trigger || !menu) return;
+    if (menu.hidden) return;
     wrapper.classList.remove('is-open');
     trigger.setAttribute('aria-expanded', 'false');
     menu.hidden = true;
-    updateCustomSelectPlacement(wrapper);
     getOptions(wrapper).forEach(option => option.classList.remove('is-active'));
     trigger.removeAttribute('aria-activedescendant');
 }
@@ -39,7 +39,7 @@ function getCustomSelectBoundary(wrapper) {
 function updateCustomSelectPlacement(wrapper) {
     const trigger = wrapper.querySelector('[data-custom-select-trigger]');
     const menu = wrapper.querySelector('[data-custom-select-menu]');
-    if (!trigger || !menu || !trigger.getClientRects().length) return;
+    if (!trigger || !menu || menu.hidden || !trigger.getClientRects().length) return;
 
     const boundary = getCustomSelectBoundary(wrapper);
     const triggerRect = trigger.getBoundingClientRect();
@@ -73,15 +73,7 @@ function updateCustomSelectPlacement(wrapper) {
         menu.style.right = 'auto';
     }
 
-    // 收起时用不可见的副本测量，避免原菜单的显隐过渡撑大滚动容器。
-    let measurement = menu;
-    if (menu.hidden) {
-        measurement = menu.cloneNode(true);
-        measurement.style.cssText += '; display: grid !important; position: fixed; inset: 0 auto auto 0; visibility: hidden; max-height: none; transition: none;';
-        menu.after(measurement);
-    }
-    const menuHeight = Math.min(measurement.scrollHeight, 272);
-    if (measurement !== menu) measurement.remove();
+    const menuHeight = Math.min(menu.scrollHeight, 272);
     const opensUpward = menuHeight > spaceBelow && spaceAbove > spaceBelow;
     menu.style.maxHeight = `${Math.min(272, opensUpward ? spaceAbove : spaceBelow)}px`;
     wrapper.classList.toggle('is-open-upward', opensUpward);
@@ -280,7 +272,6 @@ function enhanceCustomSelect(select) {
     const label = select.closest('label');
     if (label?.htmlFor === select.id) label.htmlFor = trigger.id;
     renderCustomSelect(wrapper);
-    updateCustomSelectPlacement(wrapper);
     select.addEventListener('change', () => renderCustomSelect(wrapper));
     const disabledObserver = new MutationObserver(() => {
         trigger.disabled = select.disabled;
@@ -326,9 +317,10 @@ function enhanceCustomSelect(select) {
 
 function updateCustomSelectPlacements() {
     if (placementUpdateFrame) return;
+    if (!document.querySelectorAll('[data-custom-select].is-open').length) return;
     placementUpdateFrame = requestAnimationFrame(() => {
         placementUpdateFrame = 0;
-        document.querySelectorAll('.custom-select').forEach(updateCustomSelectPlacement);
+        document.querySelectorAll('[data-custom-select].is-open').forEach(updateCustomSelectPlacement);
     });
 }
 

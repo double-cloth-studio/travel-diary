@@ -1,4 +1,4 @@
-import { getMediaFileUrl } from './utils.js?v=2.1.152';
+import { getMediaFileUrl } from './utils.js?v=2.1.153';
 import { sourceOf } from './zip-stream.mjs';
 
 const CACHE_NAME = 'travel-image-text-v2';

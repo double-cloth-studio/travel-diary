@@ -87,6 +87,10 @@
     body[data-route="photos"] .page-spread > .paper-page-right {
         transform: translateZ(0);
     }
+    /* 虚拟窗口只保留少量有限高度的行，图片就绪时无需重绘整张长纸面。 */
+    .photo-sleeve-virtual-row {
+        transform: translateZ(0);
+    }
 }
 
 .photo-sleeve-virtual { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }

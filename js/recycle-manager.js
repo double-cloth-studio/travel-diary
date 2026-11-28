@@ -1,13 +1,13 @@
-import { escapeHtml, getMediaFileUrl, formatFileSize } from './utils.js?v=2.1.152';
-import { createPasswordGate } from './record-password.js?v=2.1.152';
-import { detectWriterCapability } from './writer-capability.js?v=2.1.152';
-import { confirmFeedback } from './feedback-dialog.js?v=2.1.152';
-import { createContentPreviewScope, mediaKind } from './content-preview.js?v=2.1.152';
-import { enhanceCustomSelects } from './custom-select.js?v=2.1.152';
-import { renderRecordDifference, loadDifferenceMedia } from './record-diff-view.js?v=2.1.152';
-import { recordIdentity } from './record-identity.mjs?v=2.1.152';
-import { createImageTextSearch, imageTextMatches, loadImageTextEntries } from './image-text-search.js?v=2.1.152';
-import { buildRecycleTree, buildRestorePreviewTree, groupRecycleItems, recycleRestoreConflicts, recycleRecordLabel, recycleFileType, recycleSelectionGroups, selectRecycleParts } from './recycle-tree.mjs?v=2.1.152';
+import { escapeHtml, getMediaFileUrl, formatFileSize } from './utils.js?v=2.1.153';
+import { createPasswordGate } from './record-password.js?v=2.1.153';
+import { detectWriterCapability } from './writer-capability.js?v=2.1.153';
+import { confirmFeedback } from './feedback-dialog.js?v=2.1.153';
+import { createContentPreviewScope, mediaKind } from './content-preview.js?v=2.1.153';
+import { enhanceCustomSelects } from './custom-select.js?v=2.1.153';
+import { renderRecordDifference, loadDifferenceMedia } from './record-diff-view.js?v=2.1.153';
+import { recordIdentity } from './record-identity.mjs?v=2.1.153';
+import { createImageTextSearch, imageTextMatches, loadImageTextEntries } from './image-text-search.js?v=2.1.153';
+import { buildRecycleTree, buildRestorePreviewTree, groupRecycleItems, recycleRestoreConflicts, recycleRecordLabel, recycleFileType, recycleSelectionGroups, selectRecycleParts } from './recycle-tree.mjs?v=2.1.153';
 
 function restoreChangeTitle(record, comparison) {
     const diary = record.date ? record : comparison.previous?.date ? comparison.previous : null;

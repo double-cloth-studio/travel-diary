@@ -20,6 +20,7 @@ export function mountVirtualPhotoSleeve(sleeve, { media, grouped, renderItem, re
     content.className = 'photo-sleeve-virtual-content';
     sleeve.append(content);
     const mounted = new Map();
+    let mounting = [];
     let rows = [];
     let columns = 0;
     let width = 0;
@@ -44,7 +45,7 @@ export function mountVirtualPhotoSleeve(sleeve, { media, grouped, renderItem, re
         const following = [...content.children].find(child => Number(child.dataset.virtualRow) > index);
         content.insertBefore(node, following || null);
         mounted.set(index, node);
-        node.querySelectorAll('img').forEach(mountMedia);
+        mounting.push(...node.querySelectorAll('img'));
         return node;
     }
 
@@ -133,6 +134,14 @@ export function mountVirtualPhotoSleeve(sleeve, { media, grouped, renderItem, re
         for (const [index, node] of mounted) {
             if (!needed.has(index) && !node.contains(document.activeElement)) removeRow(index, node);
         }
+        // 先完成所有行的增删，再启动观察与预读，避免每插入一行便触发布局。
+        flushMedia();
+    }
+
+    function flushMedia() {
+        const images = mounting;
+        mounting = [];
+        images.forEach(mountMedia);
     }
 
     function findRow(offset) {
@@ -163,6 +172,7 @@ export function mountVirtualPhotoSleeve(sleeve, { media, grouped, renderItem, re
         if (next < 0 || next >= media.length) return;
         const rowIndex = rows.findIndex(row => !row.heading && next >= row.start && next < row.end);
         const node = mountRow(rowIndex);
+        flushMedia();
         event.preventDefault();
         node.querySelector(`[data-media-index="${next}"]`).focus();
         scheduleUpdate();

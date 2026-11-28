@@ -100,7 +100,7 @@ test('缓存缺失只生成一次并保存，重复列表共享生成任务，�
         calls.push({ url, method: options.method || 'GET' });
         await new Promise(resolve => setImmediate(resolve));
         if (url === 'index.html') return new Response(null, { headers: { 'X-Travel-Media-Cache': 'disk-v1' } });
-        assert.equal(url, previewPath.slice(1));
+        assert.equal(url.split('?')[0], previewPath.slice(1));
         if (options.method === 'PUT') { stored = options.body; return new Response(null, { status: 204 }); }
         return new Response(stored || null, { status: stored ? 200 : 204, headers: { 'Content-Type': 'image/jpeg', ETag: 'source-version' } });
     };
@@ -115,7 +115,7 @@ test('缓存缺失只生成一次并保存，重复列表共享生成任务，�
     assert.equal(originals.length, 1);
     clearMediaPreviewCache();
     await getMediaPreviewBlob('data/photos/trip/image.png', 'image');
-    assert.deepEqual(calls, [{ url: previewPath.slice(1), method: 'GET' }], '刷新后直接读取已保存的服务器缩略图');
+    assert.deepEqual(calls, [{ url: previewPath.slice(1) + '?cached=1', method: 'GET' }], '刷新后直接读取已保存的服务器缩略图');
     assert.equal(originals.length, 1);
     globalThis.fetch = async () => new Response('<html>错误页</html>', { headers: { 'Content-Type': 'text/html' } });
     clearMediaPreviewCache();
@@ -148,7 +148,7 @@ test('服务端缩略图命中时只发一个请求，不校验或下载原文�
     };
     const source = 'data/photos/trip/ready.png';
     await getMediaPreviewBlob(source, 'image');
-    assert.deepEqual(calls, [{ url: '.cache/media-previews/photos/trip/ready.png.jpg', method: 'GET' }]);
+    assert.deepEqual(calls, [{ url: '.cache/media-previews/photos/trip/ready.png.jpg?cached=1', method: 'GET' }]);
     clearMediaPreviewCache();
     await getMediaPreviewBlob(source, 'image');
     assert.equal(calls.length, 2, '新页面仍直接读取缩略图');
@@ -295,6 +295,8 @@ test('后端解码失败后重读当前版本，允许回传预览并拒绝过�
     const base = await listenOnFetchSafePort(server);
     t.after(() => new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }));
     for (let index = 0; index < 2; index++) {
+        assert.equal((await fetch(base + previewPath + '?cached=1')).status, 204);
+        assert.equal(calls, index, '屏外缓存预读不会启动后端浏览器');
         const missing = await fetch(base + previewPath);
         assert.equal(missing.status, 204);
         const etag = missing.headers.get('etag');
@@ -305,6 +307,7 @@ test('后端解码失败后重读当前版本，允许回传预览并拒绝过�
         headers['If-Match'] = etag;
         assert.equal((await fetch(base + previewPath, { method: 'PUT', headers, body: jpeg })).status, 204);
         assert.equal((await fetch(base + previewPath)).status, 200);
+        assert.equal((await fetch(base + previewPath + '?cached=1')).status, 200);
         assert.equal(calls, index + 1, '有效缓存命中后不调用后端生成');
         await writeFile(path.join(root, 'data/photos/trip/image.png'), `invalidate-${index}`);
     }

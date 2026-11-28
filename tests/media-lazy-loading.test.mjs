@@ -14,6 +14,55 @@ const imageResponse = () => new Response(new Blob(['thumbnail'], { type: 'image/
 const hostResponse = () => new Response(null, { headers: { 'X-Travel-Media-Cache': 'disk-v1' } });
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
+test('屏外预读只读取已有缓存，与可见加载共享请求，缓存缺失不会生成或下载原图', async t => {
+    const calls = [];
+    let finish;
+    const preview = await previewModule(t, { fetch: async url => {
+        calls.push(url);
+        if (url.includes('missing')) return new Response(null, { status: 204 });
+        return new Promise(resolve => { finish = () => resolve(imageResponse()); });
+    } });
+    const source = 'data/photos/trip/prefetched.png';
+    const warming = preview.prefetchMediaPreview(source, 'image', () => true);
+    const visible = preview.getMediaPreviewBlob(source, 'image');
+    await tick();
+    assert.equal(calls.length, 1);
+    assert.match(calls[0], /\?cached=1$/);
+    finish();
+    await Promise.all([warming, visible]);
+    await preview.getMediaPreviewBlob(source, 'image');
+    assert.equal(calls.length, 1, '滚入视口复用预读结果');
+    await preview.prefetchMediaPreview('data/photos/trip/missing.png', 'image', () => true);
+    assert.equal(calls.length, 2);
+    assert.ok(calls.every(url => url.endsWith('?cached=1')), '预读不进入后台生成入口');
+    await preview.prefetchMediaPreview('data/photos/trip/removed.png', 'image', () => false);
+    assert.equal(calls.length, 2, '已卸载的虚拟行不预读');
+});
+
+test('两项慢媒体生成期间，缓存命中的缩略图仍可完成读取', async t => {
+    const finish = [];
+    let generating = 0;
+    let thirdStarted;
+    const third = new Promise(resolve => { thirdStarted = resolve; });
+    const preview = await previewModule(t, { fetch: async url => {
+        if (url.includes('ready')) return imageResponse();
+        if (url.endsWith('?cached=1')) return new Response(null, { status: 204 });
+        generating++;
+        if (url.includes('slow-2')) thirdStarted();
+        return new Promise(resolve => finish.push(() => { generating--; resolve(imageResponse()); }));
+    } });
+    const slow = Array.from({ length: 3 }, (_, index) => preview.getMediaPreviewBlob(`data/photos/trip/slow-${index}.png`, 'image'));
+    await tick();
+    assert.equal(generating, 2, '原图生成保持并发上限');
+    const ready = await preview.getMediaPreviewBlob('data/photos/trip/ready.png', 'image');
+    assert.equal(ready.size, 9, '不必等待慢生成结束');
+    finish.shift()();
+    await third;
+    assert.equal(generating, 2);
+    finish.splice(0).forEach(done => done());
+    await Promise.all(slow);
+});
+
 test('重新挂载缩略图复用 Blob URL，清空缓存后重新读取，同一图片不会重复设置 src', async t => {
     const calls = [];
     const preview = await previewModule(t, { fetch: async url => { calls.push(url); return url === 'index.html' ? hostResponse() : imageResponse(); } });
@@ -37,11 +86,10 @@ test('排队期间离开视口的预览不发请求，另一个可见使用者�
     const preview = await previewModule(t, { fetch: async url => {
         if (url === 'index.html') return hostResponse();
         calls.push(url);
-        if (calls.length <= 2) return new Promise(resolve => finish.push(() => resolve(imageResponse())));
+        if (calls.length <= 6) return new Promise(resolve => finish.push(() => resolve(imageResponse())));
         return imageResponse();
     } });
-    const first = preview.getMediaPreviewBlob('data/photos/trip/first.png', 'image');
-    const second = preview.getMediaPreviewBlob('data/photos/trip/second.png', 'image');
+    const first = Array.from({ length: 6 }, (_, index) => preview.getMediaPreviewBlob(`data/photos/trip/first-${index}.png`, 'image'));
     await tick();
     let visible = true;
     const skipped = preview.getMediaPreviewBlob('data/photos/trip/skipped.png', 'image', () => visible);
@@ -50,7 +98,7 @@ test('排队期间离开视口的预览不发请求，另一个可见使用者�
     visible = false;
     const rejected = assert.rejects(skipped, { name: 'AbortError' });
     finish.forEach(resolve => resolve());
-    await Promise.all([first, second, rejected]);
+    await Promise.all([...first, rejected]);
     assert.equal(await shared, await needed);
     assert.equal(calls.some(url => url.includes('skipped')), false);
     assert.equal(calls.filter(url => url.includes('shared')).length, 1);
@@ -161,6 +209,28 @@ test('共用观察器只启动可见项，删除旧 DOM 后解除观察，空闲
     assert.equal(observers[0].stopped, true);
     assert.equal(mutations[0].stopped, true);
     stop();
+});
+
+test('无关图片或菜单的 DOM 更新不重新测量整份待加载附件列表', async t => {
+    let mutate;
+    let measurements = 0;
+    const preview = await previewModule(t, {
+        innerWidth: 1200, innerHeight: 800, document: { documentElement: {} },
+        IntersectionObserver: class { observe() {} unobserve() {} disconnect() {} },
+        MutationObserver: class {
+            constructor(callback) { mutate = callback; }
+            observe() {} disconnect() {}
+        }
+    });
+    const stops = Array.from({ length: 1000 }, () => preview.observeMediaVisibility({
+        isConnected: true, getBoundingClientRect: () => { measurements++; return { width: 80, height: 60, top: 900, bottom: 960 }; }
+    }, () => assert.fail('屏外图片不加载')));
+    await new Promise(resolve => setTimeout(resolve, 5));
+    measurements = 0;
+    mutate([{ type: 'attributes', target: { contains: () => false } }]);
+    await new Promise(resolve => setTimeout(resolve, 5));
+    assert.equal(measurements, 0);
+    stops.forEach(stop => stop());
 });
 
 test('折叠内容即使有有效布局矩形也不加载，summary 内的预览仍可显示', async t => {

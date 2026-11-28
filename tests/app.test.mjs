@@ -24,6 +24,9 @@ export function stopTestPageMedia(...images) {
 export function getTestPageMediaLoad(image) {
     return pageMediaLoads.get(image);
 }
+export function getTestPreviewMedia(html) {
+    return pendingPhotoSleeves.get(/data-preview-photos="([0-9]+)"/.exec(html)?.[1])?.media;
+}
 export function stubPageTurns(pageTurns) {
     const previous = refs.pageTurns;
     refs.pageTurns = pageTurns;
@@ -278,7 +281,8 @@ test('省份媒体汇总覆盖各篇日记，排除其他省份和同名国外�
     ].map(normalizeTravelLocation);
     const params = { country: 'CN', area: '江苏省', locality: '' };
     const preview = app.renderTestPlace(records, params);
-    assert.equal((preview.left.match(/data-action="open-media-viewer"/g) || []).length, 5);
+    assert.equal((preview.left.match(/data-action="open-media-viewer"/g) || []).length, 0, '预览挂载后才按实际列数创建三行');
+    assert.equal(app.getTestPreviewMedia(preview.left).length, 5);
     assert.match(preview.left, /photo-sleeve-preview/);
     assert.match(preview.left, /data-preview-rows="3"/);
     assert.match(preview.left, /href="#photos\?country=CN&amp;area=%E6%B1%9F%E8%8B%8F%E7%9C%81"/);
@@ -383,7 +387,7 @@ test('行程媒体覆盖沿途日记，附件路由保持行程范围、分组�
     assert.match(preview.left, /href="#photos\?trip=trip%3Aholiday"/);
     assert.match(preview.left, /2 篇日记<\/span> · <span>2 个目的地<\/span> · <span>4 张图片<\/span> · <span>1 个视频/);
     assert.match(preview.left, /data-preview-rows="3"/);
-    assert.match(preview.left, /river\.jpg|gate\.jpg|walk\.mp4/);
+    assert.deepEqual(app.getTestPreviewMedia(preview.left).map(item => item.name).sort(), ['garden.jpg', 'gate.jpg', 'river.jpg', 'street.jpg', 'walk.mp4']);
     assert.doesNotMatch(preview.left + preview.right, /other\.jpg/);
     const params = { trip: 'trip:holiday' };
     const route = app.parseRoute(app.serializeRoute({ name: 'photos', params }));
@@ -1329,7 +1333,7 @@ test('翻页等待尚无 src 和正在读取的可见缩略图，复用懒加载
     assert.equal(visible.src, undefined);
     assert.equal(visible.loading, 'eager');
     assert.deepEqual(ready, [], '尚未获得 Blob URL 时不能复制新页');
-    assert.deepEqual(requests, ['.cache/media-previews/photos/trip/turn.png.jpg'], '观察器和两次翻页共用一次读取');
+    assert.deepEqual(requests, ['.cache/media-previews/photos/trip/turn.png.jpg?cached=1'], '观察器和两次翻页共用一次读取');
     finishFetch(new Response(new Blob(['preview'], { type: 'image/jpeg' })));
     await decoding;
     assert.match(visible.src, /^blob:/);
@@ -1639,7 +1643,7 @@ test('图片与视频封面只在进入视口后读取预览缓存，换页解�
     await app.getTestPageMediaLoad(video);
     assert.match(video.src, /^blob:/);
     URL.revokeObjectURL(video.src);
-    assert.ok(requests.includes('.cache/media-previews/videos/trip/movie.mp4.jpg'));
+    assert.ok(requests.includes('.cache/media-previews/videos/trip/movie.mp4.jpg?cached=1'));
     assert.equal(requests.some(url => url.startsWith('data/')), false);
     assert.equal(video.preload, undefined);
     assert.equal(first.targets.size, 0);

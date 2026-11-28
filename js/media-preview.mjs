@@ -10,6 +10,7 @@ export function getMediaPreviewUrl(src) {
 }
 
 const pending = new Map();
+const pendingReads = new Map();
 const imageRequests = new WeakMap();
 const previews = new Map();
 const previewUrls = new WeakMap();
@@ -17,8 +18,6 @@ const MAXIMUM_PREVIEW_BYTES = 32 * 1024 * 1024;
 const MAXIMUM_PREVIEW_COUNT = 256;
 let previewBytes = 0;
 let cacheGeneration = 0;
-const queue = [];
-let active = 0;
 const CACHE_NAME = 'travel-media-previews-canvas-v1';
 
 function releasePreviewUrl(blob) {
@@ -34,6 +33,7 @@ function releasePreviewUrl(blob) {
 // 保留压缩结果和 Blob URL，页面重绘与列表筛选无需再次请求或生成缩略图。
 function rememberPreview(key, blob) {
     const previous = previews.get(key);
+    if (previous === blob) return blob;
     if (previous) {
         previewBytes -= previous.size;
         releasePreviewUrl(previous);
@@ -53,6 +53,7 @@ function rememberPreview(key, blob) {
 export function clearMediaPreviewCache() {
     cacheGeneration++;
     pending.clear();
+    pendingReads.clear();
     for (const blob of previews.values()) {
         releasePreviewUrl(blob);
     }
@@ -88,13 +89,18 @@ let visibilityObserver;
 let removalObserver;
 let fallbackListening = false;
 let visibilityCheckTimer;
+const visibilityChecks = new Set();
 
-function scheduleVisibilityCheck() {
+function scheduleVisibilityCheck(target) {
+    if (target) visibilityChecks.add(target);
+    else for (const target of visibleTasks.keys()) visibilityChecks.add(target);
     if (visibilityCheckTimer !== undefined) return;
     // 列表项可在 async 工厂返回后才挂载，等本轮 DOM 更新结束再清理离开页面的目标。
     visibilityCheckTimer = setTimeout(() => {
         visibilityCheckTimer = undefined;
-        checkVisibleTasks();
+        const targets = new Set(visibilityChecks);
+        visibilityChecks.clear();
+        checkVisibleTasks(targets);
     }, 0);
 }
 
@@ -106,6 +112,7 @@ function releaseVisibilityObservers() {
     removalObserver = undefined;
     clearTimeout(visibilityCheckTimer);
     visibilityCheckTimer = undefined;
+    visibilityChecks.clear();
     if (fallbackListening) {
         removeEventListener('scroll', checkVisibleTasks, true);
         removeEventListener('resize', checkVisibleTasks);
@@ -114,8 +121,10 @@ function releaseVisibilityObservers() {
     }
 }
 
-function checkVisibleTasks() {
-    for (const [target, start] of visibleTasks) {
+function checkVisibleTasks(targets) {
+    for (const target of targets instanceof Set ? targets : visibleTasks.keys()) {
+        const start = visibleTasks.get(target);
+        if (!start) continue;
         if (!target.isConnected) {
             visibilityObserver?.unobserve(target);
             visibleTasks.delete(target);
@@ -136,6 +145,7 @@ export function observeMediaVisibility(target, task) {
     const stop = () => {
         if (visibleTasks.get(target) !== start) return;
         visibleTasks.delete(target);
+        visibilityChecks.delete(target);
         visibilityObserver?.unobserve(target);
         releaseVisibilityObservers();
     };
@@ -143,7 +153,16 @@ export function observeMediaVisibility(target, task) {
     visibleTasks.set(target, start);
     visibilityObserver?.observe(target);
     if (!removalObserver && typeof MutationObserver === 'function') {
-        removalObserver = new MutationObserver(scheduleVisibilityCheck);
+        removalObserver = new MutationObserver((records = []) => {
+            if (!visibilityObserver) { scheduleVisibilityCheck(); return; }
+            // 原生相交观察器负责布局变化，只复查已移除项和显隐发生变化的子树。
+            // 一张缩略图就绪或菜单更新不再重新测量其他数千个附件。
+            for (const target of visibleTasks.keys()) {
+                if (!target.isConnected || records.some(record => record.type === 'attributes' && record.target.contains(target))) {
+                    scheduleVisibilityCheck(target);
+                }
+            }
+        });
         removalObserver.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'open', 'class', 'style'] });
     }
     if (!visibilityObserver && !fallbackListening && globalThis.addEventListener) {
@@ -153,20 +172,56 @@ export function observeMediaVisibility(target, task) {
         addEventListener('toggle', checkVisibleTasks, true);
     }
     // 取消后重新观察时目标可能一直处于相交状态，主动检查保证它能恢复加载。
-    scheduleVisibilityCheck();
+    scheduleVisibilityCheck(target);
     return stop;
 }
 
-// 每次最多处理两个媒体，重复列表项共用读取与生成任务。
-function schedule(task) {
-    return new Promise((resolve, reject) => {
+function createPreviewQueue(limit) {
+    const queue = [];
+    let active = 0;
+    return task => new Promise((resolve, reject) => {
         queue.push(async () => {
-            active += 1;
+            active++;
             try { resolve(await task()); } catch (error) { reject(error); }
-            finally { active -= 1; queue.shift()?.(); }
+            finally { active--; queue.shift()?.(); }
         });
-        if (active < 2) queue.shift()?.();
+        if (active < limit) queue.shift()?.();
     });
+}
+
+// 小型缓存读取不被原图解码和后台生成占满，耗时生成仍限制为两个。
+const readPreview = createPreviewQueue(6);
+const generatePreview = createPreviewQueue(2);
+
+function readCachedPreview(source, kind, isNeeded) {
+    const key = `${kind}:${source}`;
+    if (previews.has(key)) return Promise.resolve(previews.get(key));
+    let request = pendingReads.get(key);
+    if (!request) {
+        const generation = cacheGeneration;
+        request = { consumers: new Set([isNeeded]) };
+        pendingReads.set(key, request);
+        request.promise = readPreview(async () => {
+            requirePreview(() => generation === cacheGeneration && [...request.consumers].some(needed => needed()));
+            const url = getMediaPreviewUrl(source);
+            const response = await fetch(`${url}${url.includes('?') ? '&' : '?'}cached=1`, { cache: 'no-cache', signal: AbortSignal.timeout(20000) });
+            if (response.status === 200 && response.headers.get('content-type')?.startsWith('image/jpeg')) {
+                const blob = await response.blob();
+                return generation === cacheGeneration ? rememberPreview(key, blob) : blob;
+            }
+            await response.body?.cancel();
+            if (response.status !== 204) throw new Error('无法读取预览缓存。');
+            return null;
+        }).finally(() => { if (pendingReads.get(key) === request) pendingReads.delete(key); });
+    } else request.consumers.add(isNeeded);
+    return request.promise;
+}
+
+// 仅预读虚拟窗口内已有的缩略图，不为屏外附件读取原文件或启动生成。
+export async function prefetchMediaPreview(source, kind, isNeeded) {
+    if (!getMediaPreviewUrl(source)) return;
+    try { await readCachedPreview(source, kind, isNeeded); }
+    catch { /* 可见时沿用正常加载与重试，不将预读失败显示为附件错误。 */ }
 }
 
 // 列表缓存缺失、本地待上传文件和批量生成共用压缩逻辑。
@@ -258,22 +313,27 @@ async function getPreview(source, kind, isNeeded) {
         const target = new URL(source, document.baseURI);
         if (target.origin !== new URL(document.baseURI).origin || !target.pathname.endsWith('/api/travel-data')
             || target.searchParams.get('mode') !== 'recycle-file' || !target.searchParams.get('id') || !target.searchParams.get('path')) throw new Error('无效的媒体路径。');
-        return browserPreview(source, kind, isNeeded);
+        return generatePreview(() => browserPreview(source, kind, isNeeded));
     }
     requirePreview(isNeeded);
-    // 缓存命中只读取缩略图。
-    const response = await fetch(url, { cache: 'no-cache', signal: AbortSignal.timeout(20000) });
-    if (response.status === 200 && response.headers.get('content-type')?.startsWith('image/jpeg')) return response.blob();
-    await response.body?.cancel();
-    if (response.status !== 204) throw new Error('无法读取预览缓存。');
-    requirePreview(isNeeded);
-    const blob = await createMediaPreview(source, kind);
-    try { await putPreview(url, blob, response.headers.get('etag')); }
-    catch (error) {
-        if (error.status === 409) throw error;
-        // 缓存只读或空间不足时仍显示本次生成结果。
-    }
-    return blob;
+    const cached = await readCachedPreview(source, kind, isNeeded);
+    if (cached) return cached;
+    return generatePreview(async () => {
+        requirePreview(isNeeded);
+        // 仅真正可见且缓存缺失的媒体进入后台生成或原图解码队列。
+        const response = await fetch(url, { cache: 'no-cache', signal: AbortSignal.timeout(20000) });
+        if (response.status === 200 && response.headers.get('content-type')?.startsWith('image/jpeg')) return response.blob();
+        await response.body?.cancel();
+        if (response.status !== 204) throw new Error('无法读取预览缓存。');
+        requirePreview(isNeeded);
+        const blob = await createMediaPreview(source, kind);
+        try { await putPreview(url, blob, response.headers.get('etag')); }
+        catch (error) {
+            if (error.status === 409) throw error;
+            // 缓存只读或空间不足时仍显示本次生成结果。
+        }
+        return blob;
+    });
 }
 
 export async function getMediaPreviewBlob(source, kind, isNeeded = () => true) {
@@ -289,12 +349,14 @@ export async function getMediaPreviewBlob(source, kind, isNeeded = () => true) {
         const generation = cacheGeneration;
         request = { consumers: new Set([isNeeded]) };
         pending.set(key, request);
-        request.promise = schedule(async () => {
+        request.promise = (async () => {
+            // 同一轮挂载的重复附件先登记使用者，再决定是否仍需读取。
+            await Promise.resolve();
             const isNeeded = () => generation === cacheGeneration && [...request.consumers].some(needed => needed());
             requirePreview(isNeeded);
             const blob = await getPreview(source, kind, isNeeded);
             return generation === cacheGeneration ? rememberPreview(key, blob) : blob;
-        }).finally(() => { if (pending.get(key) === request) pending.delete(key); });
+        })().finally(() => { if (pending.get(key) === request) pending.delete(key); });
     } else request.consumers.add(isNeeded);
     return request.promise;
 }

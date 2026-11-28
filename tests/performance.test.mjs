@@ -40,7 +40,8 @@ test('多图预览不把 Base64 写入 DOM，并降低移动端重绘开销', ()
     assert.match(mediaPreviewJs, /const cropWidth = fit === 'cover'/);
     assert.match(mediaPreviewJs, /canvas\.toBlob\(resolve, 'image\/jpeg'/);
     assert.match(recordEditorJs, /createMediaPreview\(file, kind/);
-    assert.match(mediaFileLinkJs, /media\.loading = 'lazy';[\s\S]*media\.decoding = 'async';[\s\S]*media\.fetchPriority = 'low';/);
+    assert.match(mediaFileLinkJs, /media\.loading = 'lazy';[\s\S]*media\.decoding = 'async';/);
+    assert.doesNotMatch(mediaFileLinkJs, /media\.fetchPriority = 'low'/);
     assert.match(mediaFileLinkJs, /media\.width = 84;[\s\S]*media\.height = 64;/);
     assert.doesNotMatch(recordEditorJs, /<img src="data:image\/\$\{/);
     assert.doesNotMatch(recordEditorJs, /const previewUrl = URL\.createObjectURL\(file\);\s*pendingPreviews/);
@@ -50,7 +51,7 @@ test('多图预览不把 Base64 写入 DOM，并降低移动端重绘开销', ()
 });
 
 test('日记媒体列表显示压缩预览并懒加载，查看器保留原文件', () => {
-    assert.match(appJs, /<img data-src="\$\{escapeHtml\(getMediaPreviewUrl\(item\.src\)\)\}" alt="\$\{escapeHtml\(item\.alt\)\}" loading="lazy" decoding="async" fetchpriority="low">/);
+    assert.match(appJs, /<img data-src="\$\{escapeHtml\(getMediaPreviewUrl\(item\.src\)\)\}" alt="\$\{escapeHtml\(item\.alt\)\}" loading="lazy" decoding="async">/);
     assert.doesNotMatch(appJs, /<video data-src=/);
     assert.match(appJs, /class="photo-viewer-media photo-viewer-image"[\s\S]*decoding="async"/);
 });
