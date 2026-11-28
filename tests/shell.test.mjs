@@ -1037,10 +1037,9 @@ test('图片与视频初始居中适配舞台且平移不会完全移出屏幕',
     assert.match(appJs, /function handlePhotoWheel\(event\) \{\s*if \(!photoViewerState \|\| !event\.target\.closest\?\.\('\[data-photo-viewer-stage\]'\)\) \{/);
     assert.match(appJs, /photoGestureState\.suppressClick = true;[\s\S]*updatePhotoViewerTransform\(\);/);
     assert.match(appJs, /if \(photoGestureState\.suppressClick\) \{[\s\S]*photoGestureState\.suppressClick = false;[\s\S]*return;/);
-    assert.match(photoViewerTransformJs, /const renderScale = scale > 0 && scale < 1 \? scale : 1;/);
-    assert.match(photoViewerTransformJs, /width: naturalWidth \* renderScale,/);
-    assert.match(photoViewerTransformJs, /height: naturalHeight \* renderScale,/);
-    assert.match(photoViewerTransformJs, /transformScale: scale \/ renderScale/);
+    assert.doesNotMatch(appJs, /frame\.style\.transform = `translate3d/);
+    assert.doesNotMatch(appJs, /image\.style\.transform = `[^`]*scale\(/);
+    assert.doesNotMatch(journalCss, /\.photo-viewer-(?:media-frame|media)\s*\{[^}]*will-change:\s*transform/);
     assert.doesNotMatch(photoViewerTransformJs, /initialScale > 0 \? initialScale : 1/);
     assert.doesNotMatch(appJs, /initialScale: photoViewerState\.initialScale/);
     assert.doesNotMatch(appJs, /photoViewerState\.rotation = start\.rotation \+ current\.angle - start\.angle;/);

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
     getInitialPhotoScale,
     getPhotoViewerZoomTranslate,
+    getPhotoViewerBounds,
     constrainPhotoViewerTranslate,
     getPhotoViewerRenderMetrics
 } from '../js/photo-viewer-transform.mjs';
@@ -92,7 +93,7 @@ test('恰好适配的媒体可以向两侧拖动，留白在窄屏缩减且不�
     }
 });
 
-test('缩小显示时使用当前显示尺寸作为合成层，避免移动端大图缩小缺块', () => {
+test('缩小显示时直接使用当前显示尺寸，避免移动端大图缩小缺块', () => {
     const fitted = getPhotoViewerRenderMetrics({
         naturalWidth: 4000,
         naturalHeight: 2526,
@@ -101,7 +102,6 @@ test('缩小显示时使用当前显示尺寸作为合成层，避免移动端�
 
     assert.equal(fitted.width, 520);
     assert.equal(fitted.height, 328.38);
-    assert.equal(fitted.transformScale, 1);
 
     const zoomed = getPhotoViewerRenderMetrics({
         naturalWidth: 4000,
@@ -111,7 +111,21 @@ test('缩小显示时使用当前显示尺寸作为合成层，避免移动端�
 
     assert.equal(zoomed.width, 4000);
     assert.equal(zoomed.height, 2526);
-    assert.equal(zoomed.transformScale, 1);
+});
+
+test('原图以上的缩放仍按显示尺寸重绘，并与旋转和拖动边界一致', () => {
+    for (const scale of [0.13, 1, 1.25, 2.5, 5]) {
+        const size = getPhotoViewerRenderMetrics({ naturalWidth: 4000, naturalHeight: 2526, scale });
+        for (const rotation of [0, 90, 180, 270]) {
+            const bounds = getPhotoViewerBounds({
+                stageWidth: 988, stageHeight: 549,
+                sourceWidth: 4000, sourceHeight: 2526, scale, rotation
+            });
+            const sideways = rotation % 180 !== 0;
+            assert.ok(Math.abs(bounds.imageWidth - (sideways ? size.height : size.width)) < 1e-8);
+            assert.ok(Math.abs(bounds.imageHeight - (sideways ? size.width : size.height)) < 1e-8);
+        }
+    }
 });
 
 test('双指缩放围绕当前手势中心而不是照片中心放大', () => {

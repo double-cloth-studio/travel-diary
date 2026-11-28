@@ -61,12 +61,10 @@ export function getPhotoViewerRenderMetrics({ naturalWidth, naturalHeight, scale
         return null;
     }
 
-    const renderScale = scale > 0 && scale < 1 ? scale : 1;
-
+    // 按显示尺寸重新栅格化，避免原尺寸合成层缩放时露出分块接缝。
     return {
-        width: naturalWidth * renderScale,
-        height: naturalHeight * renderScale,
-        transformScale: scale / renderScale
+        width: naturalWidth * scale,
+        height: naturalHeight * scale
     };
 }
 
