@@ -12,6 +12,17 @@ const { findBrowser } = require('./build-media-previews.js');
 const { loadRuntimeConfig } = require('../js/runtime-config.js');
 const { createHandler } = require('../js/server.js');
 
+function resolveWorkerCount(requested, resources = {}) {
+    if (requested != null && (!Number.isInteger(requested) || requested < 1 || requested > 8)) {
+        throw new Error('--workers 必须是 1 到 8 之间的整数。');
+    }
+    const parallelism = resources.parallelism ?? os.availableParallelism();
+    // 保留浏览器与系统空间，每个 OCR Worker 按 1 GiB 预算；容器优先采用可用内存限制。
+    const memory = resources.memory ?? Math.min(os.freemem(), process.availableMemory?.() ?? os.freemem());
+    const memoryLimit = Math.max(1, Math.floor((memory - 512 * 1024 ** 2) / 1024 ** 3));
+    return Math.max(1, Math.min(requested ?? 4, requested == null ? parallelism - 1 : parallelism, memoryLimit));
+}
+
 async function collectImages(root) {
     const images = new Map();
     const add = source => { validateImageSource(source); images.set(JSON.stringify(source), source); };
@@ -45,24 +56,37 @@ async function collectImages(root) {
 }
 
 async function buildImageTextIndex(root, options = {}) {
+    const workerCount = resolveWorkerCount(options.workers);
     root = await fs.realpath(root);
     const store = createImageTextStore(root);
     const log = options.log || console.log;
     const result = { generated: 0, cached: 0, failed: 0, skipped: 0 };
     const images = await collectImages(root);
     const items = [];
-    for (const source of images) {
-        try {
-            const cached = await store.get(source);
-            if (cached.text !== null && !options.force) { result.cached++; continue; }
-            items.push({ ...source, etag: cached.etag, file: cached.file });
-        } catch (error) {
-            if (error.code === 'ENOENT' && options.skipMissing) {
-                result.skipped++; log(`跳过缺失原图：${source.path}`);
-            } else { result.failed++; log(`索引失败：${source.path}；${error.message}`); }
+    const cachedContent = new Map();
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(8, images.length) }, async () => {
+        while (next < images.length) {
+            const source = images[next++];
+            try {
+                const cached = await store.get(source);
+                if (cached.text !== null && !options.force) {
+                    result.cached++;
+                    cachedContent.set(cached.digest, cached.text);
+                    continue;
+                }
+                items.push({ ...source, etag: cached.etag });
+            } catch (error) {
+                if (error.code === 'ENOENT' && options.skipMissing) {
+                    result.skipped++; log(`跳过缺失原图：${source.path}`);
+                } else { result.failed++; log(`索引失败：${source.path}；${error.message}`); }
+            }
         }
-    }
+    }));
     if (!items.length) return result;
+    const workers = Math.min(workerCount, items.length);
+    const started = Date.now();
+    log(`准备索引 ${items.length} 张图片，使用 ${workers} 个并行 Worker；相同内容复用识别结果。`);
     const config = loadRuntimeConfig(root).mediaPreviews;
     const browserPath = await findBrowser(options.browser || process.env.TRAVEL_BROWSER_PATH || config.browserPath);
     const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'travel-ocr-browser-'));
@@ -87,7 +111,8 @@ async function buildImageTextIndex(root, options = {}) {
                 res.end(await fs.readFile(path.join(__dirname, 'image-text-batch.mjs')));
             } else if (req.method === 'GET' && url.pathname === session + 'manifest') {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify(items.map((item, index) => ({ index, source: `./source?index=${index}` }))));
+                res.end(JSON.stringify({ workers, items: items.map((item, index) => ({ index, source: `./source?index=${index}` })),
+                    cached: [...cachedContent].map(([digest, text]) => ({ digest, text })) }));
             } else if (req.method === 'GET' && url.pathname === session + 'source') {
                 const index = Number(url.searchParams.get('index'));
                 if (!Number.isInteger(index) || !items[index]) throw new Error('图片序号无效。');
@@ -120,7 +145,9 @@ async function buildImageTextIndex(root, options = {}) {
                     catch (error) { report.message = error.message; result.failed++; }
                 } else result.failed++;
                 completed.add(report.index);
-                log(`[${completed.size}/${items.length}] ${report.message ? '失败' : '已索引'}：${item.id ? `回收站 ${item.id}/` : ''}${item.path}${report.message ? `；${report.message}` : ''}`);
+                const elapsed = (Date.now() - started) / 1000;
+                const remaining = Math.ceil(elapsed / completed.size * (items.length - completed.size));
+                log(`[${completed.size}/${items.length}] ${report.message ? '失败' : '已索引'}：${item.id ? `回收站 ${item.id}/` : ''}${item.path}${report.message ? `；${report.message}` : ''}（已用 ${Math.round(elapsed)} 秒，预计剩余 ${remaining} 秒）`);
                 res.writeHead(204); res.end(); heartbeat();
             } else if (req.method === 'GET' && (/^\/js\/[a-z0-9.-]+$/i.test(url.pathname) || /^\/assets\/ocr\/[a-z0-9_.-]+$/i.test(url.pathname))) {
                 await handler(req, res);
@@ -160,7 +187,7 @@ async function buildImageTextIndex(root, options = {}) {
 async function main() {
     const args = process.argv.slice(2);
     if (args.length === 1 && ['--help', '-h'].includes(args[0])) {
-        console.log('用法：npm run media:ocr -- [--dir 项目目录] [--browser 浏览器路径或目录] [--skip-missing] [--force]\n使用已有 Edge / Chrome 离线识别简繁中文和英文，索引保存在 .cache/image-text/。包括当前图片、未引用图片、头像和回收站版本；有效索引自动跳过。--force 强制重建，--skip-missing 跳过缺失原图。浏览器沿用 mediaPreviews.browserPath 与 TRAVEL_BROWSER_PATH 配置。');
+        console.log('用法：npm run media:ocr -- [--dir 项目目录] [--browser 浏览器路径或目录] [--workers 1-8] [--skip-missing] [--force]\n使用已有 Edge / Chrome 离线识别简繁中文和英文，索引保存在 .cache/image-text/。包括当前图片、未引用图片、头像和回收站版本；有效索引自动跳过，相同内容只识别一次。默认按 CPU 和可用内存选择最多 4 个并行 Worker，--workers 指定并发上限（仍受 CPU 和内存约束）；--workers 1 使用串行模式。--force 强制重建，--skip-missing 跳过缺失原图。浏览器沿用 mediaPreviews.browserPath 与 TRAVEL_BROWSER_PATH 配置。');
         return;
     }
     const options = {};
@@ -169,9 +196,11 @@ async function main() {
         const arg = args.shift();
         if (arg === '--skip-missing') options.skipMissing = true;
         else if (arg === '--force') options.force = true;
-        else if (['--dir', '--browser'].includes(arg) && args.length && !args[0].startsWith('--')) {
+        else if (['--dir', '--browser', '--workers'].includes(arg) && args.length && !args[0].startsWith('--')) {
             const value = args.shift();
-            if (arg === '--dir') root = path.resolve(value); else options.browser = value;
+            if (arg === '--dir') root = path.resolve(value);
+            else if (arg === '--workers') options.workers = /^\d+$/.test(value) ? Number(value) : NaN;
+            else options.browser = value;
         } else throw new Error(`未知参数或缺少参数值：${arg}`);
     }
     const result = await buildImageTextIndex(root, options);
@@ -180,4 +209,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });
-module.exports = { buildImageTextIndex, collectImages };
+module.exports = { buildImageTextIndex, collectImages, resolveWorkerCount };

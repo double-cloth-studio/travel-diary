@@ -396,6 +396,8 @@ npm run media:previews -- --help
 npm run media:ocr
 # 指定项目和浏览器；可跳过未提供的原图，其他失败仍返回退出码 1
 npm run media:ocr -- --dir "项目目录" --browser "浏览器可执行文件路径" --skip-missing
+# 指定并发上限；内存较小的机器可用 --workers 1 串行构建
+npm run media:ocr -- --workers 4
 # 强制重新识别，或查看帮助
 npm run media:ocr -- --force
 npm run media:ocr -- --help
@@ -409,6 +411,8 @@ npm run cache:clear -- --help
 ```
 
 图片文字索引使用随项目提供的简繁中文及英文模型，在本机 Edge / Chrome / Chromium 中离线构建，不新增 npm 依赖。命令覆盖当前附件、未引用图片、头像和回收站中的图片版本，浏览器路径沿用缩略图的配置。Docker 中可执行 `docker compose exec -w /var/lib/travel-diary app npm run media:ocr`。
+
+首次构建默认按 CPU 和可用内存选择最多 4 个并行 Worker，每个 Worker 持续复用已加载的模型；相同内容只识别一次，已有有效索引也可用于新路径中的相同图片。识别分辨率与模型保持一致。`--workers 1` 使用串行模式，`--workers 8` 将并发上限提高到 8，实际并发仍受 CPU 和可用内存约束（预留 512 MiB，每个 Worker 按 1 GiB 预算；容器优先采用进程可用内存）。进度显示已用时间与预计剩余时间，复杂图片耗时不同，估计会随进度调整。
 
 网页加载时批量预读有效文字索引，各处搜索直接在内存中匹配，不再逐张下载原图或启动 OCR；回收站文字随已认证的回收清单加载。原图大小、mtime、ctime 或识别版本变化后索引失效，重新运行命令即可补齐。无索引图片仍可按需识别并将当前图结果回存磁盘；新选入的 ZIP 可按内容摘要复用已加载结果，否则仍需首次识别。毫秒级响应指索引已构建并加载后的搜索，首次识别本身不保证毫秒完成。索引由 Git 忽略且不进入个人备份，清理缓存后需重新构建。
 

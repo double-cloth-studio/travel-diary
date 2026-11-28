@@ -8,9 +8,7 @@ const pending = new Map();
 const contentResults = new Map();
 let generation = 0;
 let preloaded;
-let worker;
 let serial = Promise.resolve();
-let idleTimer;
 
 function normalizeText(text) {
     return String(text || '').normalize('NFKC').toLowerCase()
@@ -95,8 +93,13 @@ async function createWorker() {
         cacheMethod: 'none',
         errorHandler() {}
     });
-    await engine.setParameters({ tessedit_pageseg_mode: '11', user_defined_dpi: '300' });
-    return engine;
+    try {
+        await engine.setParameters({ tessedit_pageseg_mode: '11', user_defined_dpi: '300' });
+        return engine;
+    } catch (error) {
+        await engine.terminate();
+        throw error;
+    }
 }
 
 function withTimeout(operation, milliseconds, onTimeout = () => {}) {
@@ -106,27 +109,41 @@ function withTimeout(operation, milliseconds, onTimeout = () => {}) {
     })]).finally(() => clearTimeout(timer));
 }
 
-export async function recognizeImage(blob) {
-    clearTimeout(idleTimer);
-    try {
-        const image = await prepareImage(blob);
-        worker ||= createWorker();
-        const engine = await withTimeout(worker, 90000).catch(error => { throw Object.assign(error, { engineUnavailable: true }); });
-        const { data } = await withTimeout(engine.recognize(image), 60000, () => { void engine.terminate(); });
-        return normalizeText(data.text).slice(0, 50000);
-    } catch (error) {
-        const failed = worker;
+// 每个批量槽位独占并复用一个 Worker，网页按需识别仍使用单个实例。
+export function createImageTextRecognizer() {
+    let worker;
+    let idleTimer;
+    const terminate = () => {
+        clearTimeout(idleTimer);
+        const previous = worker;
         worker = undefined;
-        void failed?.then(engine => engine.terminate()).catch(() => {});
-        throw error;
-    } finally {
-        idleTimer = setTimeout(() => {
-            const previous = worker;
-            worker = undefined;
-            void previous?.then(engine => engine.terminate()).catch(() => {});
-        }, 30000);
-    }
+        return previous?.then(engine => engine.terminate()).catch(() => {});
+    };
+    return {
+        terminate,
+        async recognize(blob) {
+            clearTimeout(idleTimer);
+            let image;
+            try {
+                image = await prepareImage(blob);
+                worker ||= createWorker();
+                const engine = await withTimeout(worker, 90000).catch(error => { throw Object.assign(error, { engineUnavailable: true }); });
+                const { data } = await withTimeout(engine.recognize(image), 60000, () => { void engine.terminate(); });
+                return normalizeText(data.text).slice(0, 50000);
+            } catch (error) {
+                void terminate();
+                throw error;
+            } finally {
+                // 及时释放大画布，避免并行任务积累上一张图片的像素缓冲。
+                if (image) { image.width = 1; image.height = 1; }
+                idleTimer = setTimeout(terminate, 30000);
+            }
+        }
+    };
 }
+
+const recognizer = createImageTextRecognizer();
+export const recognizeImage = blob => recognizer.recognize(blob);
 
 async function prepareImage(blob) {
     let image;
