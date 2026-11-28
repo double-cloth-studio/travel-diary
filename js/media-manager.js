@@ -3,6 +3,7 @@ import { createPasswordGate } from './record-password.js?v=2.1.152';
 import { detectWriterCapability } from './writer-capability.js?v=2.1.152';
 import { createMediaFileLink, showMediaFilePreviewError } from './media-file-link.js?v=2.1.152';
 import { enhanceCustomSelects } from './custom-select.js?v=2.1.152';
+import { createImageTextSearch, imageSource, imageTextMatches, clearImageTextCache } from './image-text-search.js?v=2.1.152';
 
 function mediaGroupKey(file) {
     if (!file.records.length) return 'unused';
@@ -23,7 +24,7 @@ export function createMediaManager(onReferencesRemoved = async () => {}, { onClo
         <section id="mediaFilesPanel" class="media-files-section" aria-labelledby="mediaFilesTitle">
         <div class="media-manager-filters">
             <div class="media-filter-field"><label for="mediaFilterButton" class="field-label">查看</label><select id="mediaFilter" data-custom-select data-media-filter aria-label="文件分类"><option value="unused">未被日记使用</option><option value="used">被日记使用</option><option value="missing">日记中的缺失文件</option><option value="shared">多篇日记共用</option><option value="all">全部现有文件</option></select></div>
-            <div class="media-filter-field"><label class="field-label" for="mediaSearch">搜索文件名、路径或日记地点</label><div class="management-search"><input id="mediaSearch" type="search" autocomplete="off" data-media-search placeholder="筛选当前分类的文件"><button class="media-text-button" type="button" data-media-reset hidden>清除搜索</button></div></div>
+            <div class="media-filter-field"><label class="field-label" for="managementMediaSearch">搜索文件名、路径、地点或图片文字</label><div class="management-search"><input id="managementMediaSearch" type="search" autocomplete="off" data-media-search placeholder="筛选当前分类的文件"><button class="media-text-button" type="button" data-media-reset hidden>清除搜索</button></div></div>
         </div>
         <p class="media-filter-hint" data-media-hint></p>
         <div class="media-selection-tools" data-media-select-tools><button class="paper-button management-secondary" type="button" data-media-all>全选可选结果</button><button class="paper-button management-secondary" type="button" data-media-clear disabled>清空全部选择</button></div>
@@ -48,6 +49,11 @@ export function createMediaManager(onReferencesRemoved = async () => {}, { onClo
     const selectable = file => isMissing() ? capability?.mediaReferenceRemoval : !file.records.length;
     const error = message => { dialog.querySelector('[data-media-error]').textContent = message; };
     const owners = file => file.records.map(record => `<a href="#entry?id=${encodeURIComponent(record.record_id)}&from=media" data-media-record>${escapeHtml(record.date)} ${escapeHtml(record.locality)}</a>`).join('、');
+    const imageSearch = createImageTextSearch(dialog.querySelector('[data-media-search]'), {
+        getImages: () => (report?.files || []).filter(file => /\.(png|jpe?g|webp|gif|avif|heic|heif|bmp)$/i.test(file.path)).map(file => imageSource(file.path)),
+        onUpdate: () => { if (report && !busy && !stale) render(); },
+        isActive: () => dialog.open && !busy && !stale
+    });
 
     function filteredFiles() {
         if (!report) return [];
@@ -58,7 +64,8 @@ export function createMediaManager(onReferencesRemoved = async () => {}, { onClo
             if (filter === 'shared') return file.records.length > 1;
             return filter === 'all' || !file.records.length;
         }))
-            .filter(file => [file.path, ...file.records.flatMap(record => [record.date, record.locality])].some(value => String(value || '').toLowerCase().includes(query)));
+            .filter(file => [file.path, ...file.records.flatMap(record => [record.date, record.locality])].some(value => String(value || '').toLowerCase().includes(query))
+                || imageTextMatches(imageSource(file.path).key, query));
     }
 
     function syncControls() {
@@ -234,6 +241,7 @@ export function createMediaManager(onReferencesRemoved = async () => {}, { onClo
             catch { throw new Error('媒体检查返回了无法识别的结果，请重新检查后再试。'); }
             if (!response.ok || !Array.isArray(result.files)) throw new Error(result.error || '文件检查失败，请重试。');
             report = result;
+            clearImageTextCache();
             stale = false;
             render();
             if (payload?.action === 'trash') dialog.querySelector('[data-media-summary]').textContent = '已移入回收站，可从日记工具箱打开回收站恢复。';
@@ -249,6 +257,7 @@ export function createMediaManager(onReferencesRemoved = async () => {}, { onClo
         } finally {
             busy = false;
             syncControls();
+            imageSearch.refresh();
             if (payload) dialog.querySelector('[data-media-refresh]').focus();
         }
     }
@@ -292,7 +301,7 @@ export function createMediaManager(onReferencesRemoved = async () => {}, { onClo
         }
         if (event.target.closest('[data-media-refresh]')) { await request(); return; }
         if (!report) return;
-        if (event.target.closest('[data-media-reset]')) { dialog.querySelector('[data-media-search]').value = ''; renderFiles(); dialog.querySelector('[data-media-search]').focus(); }
+        if (event.target.closest('[data-media-reset]')) { dialog.querySelector('[data-media-search]').value = ''; imageSearch.refresh(); renderFiles(); dialog.querySelector('[data-media-search]').focus(); }
         if (event.target.closest('[data-media-all]') && !stale) {
             filteredFiles().filter(selectable).forEach(file => {
                 currentSelection().add(file.path);
@@ -322,6 +331,7 @@ export function createMediaManager(onReferencesRemoved = async () => {}, { onClo
         if (suspended && report) {
             suspended = false;
             dialog.showModal();
+            imageSearch.refresh();
             returnFocus?.focus({ preventScroll: true });
             dialog.querySelector('[data-media-scroll]').scrollTop = scrollPosition;
             return;

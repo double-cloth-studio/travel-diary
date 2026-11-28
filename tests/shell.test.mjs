@@ -203,7 +203,8 @@ test('移动端多选筛选勾选重绘后保持菜单滚动位置', () => {
 });
 
 test('索引夹层下拉菜单统一靠右弹出且移动端重置不聚焦搜索框', () => {
-    assert.match(customSelectJs, /const alignsRight = isLedgerFilter;[\s\S]*\? Math\.min\(Math\.max\(triggerRect\.right - menuWidth/);
+    assert.match(customSelectJs, /const usesBoundedMenu = Boolean\(wrapper\.closest\('\.ledger-feature-filters, \.media-filters'\)\)/);
+    assert.match(customSelectJs, /const alignsRight = usesBoundedMenu;[\s\S]*\? Math\.min\(Math\.max\(triggerRect\.right - menuWidth/);
     assert.match(appJs, /focusId:\s*isMobileContextPanelOpen \? 'ledgerFilters' : 'ledgerSearch'/);
 });
 

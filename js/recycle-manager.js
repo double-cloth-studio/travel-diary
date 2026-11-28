@@ -6,6 +6,7 @@ import { createContentPreviewScope, mediaKind } from './content-preview.js?v=2.1
 import { enhanceCustomSelects } from './custom-select.js?v=2.1.152';
 import { renderRecordDifference, loadDifferenceMedia } from './record-diff-view.js?v=2.1.152';
 import { recordIdentity } from './record-identity.mjs?v=2.1.152';
+import { createImageTextSearch, imageTextMatches } from './image-text-search.js?v=2.1.152';
 import { buildRecycleTree, buildRestorePreviewTree, groupRecycleItems, recycleRestoreConflicts, recycleRecordLabel, recycleFileType, recycleSelectionGroups, selectRecycleParts } from './recycle-tree.mjs?v=2.1.152';
 
 function restoreChangeTitle(record, comparison) {
@@ -40,7 +41,7 @@ export function createRecycleManager(onRestored, { onClose, isActive = () => tru
     dialog.innerHTML = `<div class="record-transfer-card">
         <header class="management-heading"><div><h2 id="recycleManagerTitle">回收站</h2><p>勾选内容后，可预览恢复变化、恢复或永久清除。</p></div><button class="paper-button management-secondary" type="button" data-recycle-close>关闭</button></header>
         <div class="recycle-toolbar"><p data-recycle-status></p><div class="recycle-toolbar-actions"><button class="paper-button management-secondary" type="button" data-recycle-refresh>刷新</button><button class="paper-button recycle-purge" type="button" data-recycle-clear disabled>清空回收站</button></div></div>
-        <div class="recycle-filter-bar"><div class="recycle-search-field"><label class="field-label" for="recycleSearch">筛选回收内容</label><div class="management-search"><input id="recycleSearch" type="search" autocomplete="off" data-recycle-search placeholder="搜索标题、类型、地点或文件路径"><button class="media-text-button" type="button" data-recycle-reset hidden>清除搜索</button></div></div><div class="media-selection-tools"><button class="paper-button management-secondary" type="button" data-recycle-all disabled>全选当前结果</button><button class="paper-button management-secondary" type="button" data-recycle-none disabled>取消选择</button></div></div>
+        <div class="recycle-filter-bar"><div class="recycle-search-field"><label class="field-label" for="recycleSearch">筛选回收内容</label><div class="management-search"><input id="recycleSearch" type="search" autocomplete="off" data-recycle-search placeholder="标题、类型、地点、路径或图片文字"><button class="media-text-button" type="button" data-recycle-reset hidden>清除搜索</button></div></div><div class="media-selection-tools"><button class="paper-button management-secondary" type="button" data-recycle-all disabled>全选当前结果</button><button class="paper-button management-secondary" type="button" data-recycle-none disabled>取消选择</button></div></div>
         <p class="recycle-notice" data-recycle-notice role="status" aria-live="polite"></p><p data-recycle-error role="alert"></p>
         <ul class="recycle-list" data-recycle-list tabindex="0" aria-label="回收内容"></ul>
         <footer class="management-footer recycle-selection"><p data-recycle-count role="status" aria-live="polite">尚未选择内容</p><div class="recycle-selection-actions"><button class="paper-button recycle-restore" type="button" data-recycle-restore disabled>恢复所选内容</button><button class="paper-button recycle-purge" type="button" data-recycle-purge-selected disabled>永久清除所选</button></div><p class="recycle-selection-note" data-recycle-selection-note>恢复前可展开预览；清除所选内容后无法找回。</p></footer></div>`;
@@ -70,11 +71,18 @@ export function createRecycleManager(onRestored, { onClose, isActive = () => tru
     const error = message => { dialog.querySelector('[data-recycle-error]').textContent = message; };
     const notice = message => { dialog.querySelector('[data-recycle-notice]').textContent = message; };
     const types = { record: '日记', files: '文件', version: '旧版本', snapshot: '整站数据' };
+    const imageSearch = createImageTextSearch(dialog.querySelector('[data-recycle-search]'), {
+        getImages: () => (report?.items || []).flatMap(item => item.files
+            .filter(file => mediaKind(file.path) === 'image').map(file => ({ key: recycleUrl(item.id, file.path), url: recycleUrl(item.id, file.path) }))),
+        onUpdate: () => { if (report && !busy && !stale) render(); },
+        isActive: () => dialog.open && !busy && !stale
+    });
     function filteredItems() {
         const query = dialog.querySelector('[data-recycle-search]').value.trim().toLowerCase();
         return (report?.items || []).filter(item => [item.title, types[item.kind], new Date(item.createdAt).toLocaleString(),
             ...item.files.flatMap(file => [file.path, recycleFileType(file.path, mediaKind)]), ...(grouping.recordsByItem.get(item.id) || []).flatMap(record => [record.title, record.date, record.country, record.admin_area, record.locality])]
-            .some(value => String(value || '').toLowerCase().includes(query)));
+            .some(value => String(value || '').toLowerCase().includes(query))
+            || item.files.some(file => imageTextMatches(recycleUrl(item.id, file.path), query)));
     }
     function syncControls() {
         dialog.setAttribute('aria-busy', String(busy));
@@ -263,7 +271,8 @@ export function createRecycleManager(onRestored, { onClose, isActive = () => tru
         const item = report.items.find(item => item.id === id);
         const list = dialog.querySelector(`[data-recycle-item="${id}"] [data-recycle-files]`);
         if (!list) return;
-        if (!trees.has(id)) trees.set(id, buildRecycleTree(item.files, dialog.querySelector('[data-recycle-search]').value, { records: item.records, mediaReferences: item.mediaReferences, displayRecords: grouping.recordsByItem.get(id), mediaKind, groupSingleRecord: item.kind === 'snapshot', includeEmptyRecords: true, includeEmptyProfile: item.kind === 'snapshot', preserveProfileGroup: true }));
+        if (!trees.has(id)) trees.set(id, buildRecycleTree(item.files, dialog.querySelector('[data-recycle-search]').value, { records: item.records, mediaReferences: item.mediaReferences, displayRecords: grouping.recordsByItem.get(id), mediaKind, groupSingleRecord: item.kind === 'snapshot', includeEmptyRecords: true, includeEmptyProfile: item.kind === 'snapshot', preserveProfileGroup: true,
+            matchesFile: (file, query) => imageTextMatches(recycleUrl(id, file.path), query) }));
         void loadContents(list, item, previews);
     }
     async function loadContents(list, item, scope) {
@@ -516,6 +525,7 @@ export function createRecycleManager(onRestored, { onClose, isActive = () => tru
         } finally {
             busy = false;
             syncControls();
+            imageSearch.refresh();
             if (payload) dialog.querySelector('[data-recycle-refresh]').focus();
         }
     }
@@ -588,7 +598,7 @@ export function createRecycleManager(onRestored, { onClose, isActive = () => tru
         }
         if (event.target.closest('[data-recycle-close]')) { close(); return; }
         if (event.target.closest('[data-recycle-refresh]')) { await request(); return; }
-        if (event.target.closest('[data-recycle-reset]')) { dialog.querySelector('[data-recycle-search]').value = ''; render(); dialog.querySelector('[data-recycle-search]').focus(); return; }
+        if (event.target.closest('[data-recycle-reset]')) { dialog.querySelector('[data-recycle-search]').value = ''; imageSearch.refresh(); render(); dialog.querySelector('[data-recycle-search]').focus(); return; }
         if (event.target.closest('[data-recycle-none]')) { selected.clear(); partSelections.clear(); render(); return; }
         if (stale || !report) return;
         if (event.target.closest('[data-recycle-all]')) {
@@ -633,6 +643,7 @@ export function createRecycleManager(onRestored, { onClose, isActive = () => tru
         if (suspended && report) {
             suspended = false;
             dialog.showModal();
+            imageSearch.refresh();
             returnFocus?.focus({ preventScroll: true });
             dialog.scrollTop = scrollPosition.paper;
             dialog.querySelector('[data-recycle-list]').scrollTop = scrollPosition.list;
