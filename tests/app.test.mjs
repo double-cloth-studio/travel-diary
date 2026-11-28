@@ -441,7 +441,7 @@ test('播放中的视频在面板、画面和按钮上使用左右键只调整�
             matches: () => focus === 'button' };
         let prevented = 0;
         app.handleDocumentKeydown({ key: 'ArrowRight', target, preventDefault: () => prevented++ });
-        assert.equal(video.currentTime, 17);
+        assert.equal(video.currentTime, 18);
         app.handleDocumentKeydown({ key: 'ArrowLeft', target, preventDefault: () => prevented++ });
         assert.equal(video.currentTime, 12);
         assert.equal(state.index, 0);
@@ -455,6 +455,40 @@ test('播放中的视频在面板、画面和按钮上使用左右键只调整�
     video.currentTime = 2;
     app.handleDocumentKeydown({ key: 'ArrowLeft', target, preventDefault() {} });
     assert.equal(video.currentTime, 0);
+});
+
+test('视频方向键按总时长计算步长，限制绝对秒数并在时长无效时兜底', t => {
+    const previous = globalThis.document;
+    const navigation = app.stubViewerNavigation({ photos: [{ kind: 'video' }], index: 0 });
+    const video = { paused: false, ended: false, currentTime: 0, duration: 0 };
+    globalThis.document = {
+        querySelector: selector => selector === '[data-photo-viewer]' ? {} : null,
+        body: { querySelector: selector => selector === '[data-video-viewer-video]' ? video : null }
+    };
+    t.after(() => { globalThis.document = previous; navigation.restore(); });
+    const event = { target: { closest: () => null }, preventDefault() {} };
+    for (const [duration, start, expected] of [
+        [10, 4, 5], [20, 5, 6], [50, 10, 12.5], [120, 12, 18],
+        [600, 60, 90], [7200, 60, 90],
+        [NaN, 12, 17], [Infinity, 12, 17], [0, 12, 17], [-1, 12, 17]
+    ]) {
+        video.duration = duration;
+        video.currentTime = start;
+        app.handleDocumentKeydown({ ...event, key: 'ArrowRight' });
+        assert.equal(video.currentTime, expected, `时长 ${duration} 的快进位置`);
+        app.handleDocumentKeydown({ ...event, key: 'ArrowLeft' });
+        assert.equal(video.currentTime, start, `时长 ${duration} 的快退位置`);
+        video.currentTime = 0;
+        app.handleDocumentKeydown({ ...event, key: 'ArrowLeft' });
+        assert.equal(video.currentTime, 0, '快退不越过起点');
+    }
+    video.duration = 0.4;
+    video.currentTime = 0.1;
+    app.handleDocumentKeydown({ ...event, key: 'ArrowRight' });
+    assert.equal(video.currentTime, 0.4, '超短视频快进不越过终点');
+    app.handleDocumentKeydown({ ...event, key: 'ArrowLeft' });
+    assert.equal(video.currentTime, 0);
+    assert.deepEqual(navigation.calls, []);
 });
 
 test('视频暂停或结束时左右键切换媒体，单项媒体不改变进度', t => {
@@ -491,7 +525,7 @@ test('视频暂停或结束时左右键切换媒体，单项媒体不改变进�
     assert.deepEqual(navigation.calls, []);
     video.ended = false;
     app.handleDocumentKeydown({ key: 'ArrowRight', target, preventDefault() {} });
-    assert.equal(video.currentTime, 17);
+    assert.equal(video.currentTime, 18);
 });
 
 test('视频方向键保留输入控件、修饰键及已处理事件的行为', t => {
